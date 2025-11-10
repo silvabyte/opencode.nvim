@@ -1,0 +1,25 @@
+# Node modules
+node_modules/
+lsp/node_modules/
+lsp/dist/
+
+# Build artifacts
+*.log
+*.tmp
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Lua compiled files
+*.luac
+
+# Testing
+.tests/

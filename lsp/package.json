@@ -1,0 +1,34 @@
+{
+  "name": "opencode-lsp",
+  "version": "0.1.0",
+  "description": "LSP server for opencode.nvim",
+  "main": "dist/server.js",
+  "bin": {
+    "opencode-lsp": "./dist/server.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "prepare": "npm run build"
+  },
+  "keywords": [
+    "opencode",
+    "lsp",
+    "neovim",
+    "language-server"
+  ],
+  "author": "OpenCode Team",
+  "license": "MIT",
+  "dependencies": {
+    "@opencode-ai/sdk": "latest",
+    "vscode-languageserver": "^9.0.1",
+    "vscode-languageserver-textdocument": "^1.0.11"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
