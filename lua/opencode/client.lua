@@ -23,9 +23,13 @@ function M.request(method, path, body, callback)
   -- Build curl command
   local cmd = { "curl", "-s", "-X", method }
 
+  -- Always add JSON headers
+  table.insert(cmd, "-H")
+  table.insert(cmd, "Content-Type: application/json")
+  table.insert(cmd, "-H")
+  table.insert(cmd, "Accept: application/json")
+
   if body then
-    table.insert(cmd, "-H")
-    table.insert(cmd, "Content-Type: application/json")
     table.insert(cmd, "-d")
     table.insert(cmd, utils.encode_json(body))
   end
@@ -70,8 +74,8 @@ end
 ---@param project_dir string Project directory
 ---@param callback function Callback(success, session)
 function M.create_session(project_dir, callback)
-  M.request("POST", "/api/sessions", {
-    directory = project_dir,
+  M.request("POST", "/session", {
+    -- Optional: can send empty body or include directory
   }, callback)
 end
 
@@ -79,20 +83,20 @@ end
 ---@param session_id string Session ID
 ---@param callback function Callback(success, session)
 function M.get_session(session_id, callback)
-  M.request("GET", "/api/sessions/" .. session_id, nil, callback)
+  M.request("GET", "/session/" .. session_id, nil, callback)
 end
 
 ---List all sessions
 ---@param callback function Callback(success, sessions)
 function M.list_sessions(callback)
-  M.request("GET", "/api/sessions", nil, callback)
+  M.request("GET", "/session", nil, callback)
 end
 
 ---Delete session
 ---@param session_id string Session ID
 ---@param callback function Callback(success, result)
 function M.delete_session(session_id, callback)
-  M.request("DELETE", "/api/sessions/" .. session_id, nil, callback)
+  M.request("DELETE", "/session/" .. session_id, nil, callback)
 end
 
 ---Send message to session
@@ -100,7 +104,7 @@ end
 ---@param message string Message content
 ---@param callback function Callback(success, result)
 function M.send_message(session_id, message, callback)
-  M.request("POST", "/api/sessions/" .. session_id .. "/messages", {
+  M.request("POST", "/session/" .. session_id .. "/message", {
     content = message,
     role = "user",
   }, callback)
