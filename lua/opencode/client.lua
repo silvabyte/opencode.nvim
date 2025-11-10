@@ -118,8 +118,12 @@ end
 ---@param callback function Callback(success, result)
 function M.send_message(session_id, message, callback)
   M.request("POST", "/session/" .. session_id .. "/message", {
-    content = message,
-    role = "user",
+    parts = {
+      {
+        type = "text",
+        text = message,
+      },
+    },
   }, callback)
 end
 
@@ -216,9 +220,28 @@ end
 ---@param response table API response
 ---@return table completions
 function M._parse_completion_response(response)
-  -- TODO: Implement proper response parsing
-  -- For now, return empty array
-  return {}
+  -- Response format: { info: {...}, parts: [{type, text, ...}, ...] }
+  if not response or not response.parts then
+    utils.debug("No parts in response", { response = response })
+    return {}
+  end
+
+  local completions = {}
+
+  -- Extract text from all text parts
+  for _, part in ipairs(response.parts) do
+    if part.type == "text" and part.text then
+      -- For now, treat the entire response as one completion
+      -- In Phase 2, we'll do smarter parsing
+      table.insert(completions, {
+        text = part.text,
+        type = "completion",
+      })
+    end
+  end
+
+  utils.debug("Parsed completions", { count = #completions })
+  return completions
 end
 
 return M
