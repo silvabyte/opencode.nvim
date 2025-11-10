@@ -48,23 +48,36 @@ function M.request(method, path, body, callback)
       end
 
       local response = table.concat(data, "\n")
+
+      -- Check if response looks like HTML (error page)
+      if response:match("^%s*<!") or response:match("<html") then
+        utils.error("Received HTML instead of JSON")
+        callback(false, "Server returned HTML error page")
+        return
+      end
+
       local decoded = utils.decode_json(response)
 
       if decoded then
+        utils.debug("API response", { decoded = decoded })
         callback(true, decoded)
       else
-        callback(false, "Failed to parse response: " .. response)
+        utils.error("Failed to parse JSON response")
+        utils.debug("Raw response", { response = response:sub(1, 500) })
+        callback(false, "Failed to parse response: " .. response:sub(1, 200))
       end
     end,
     on_stderr = function(_, data)
       if data and #data > 0 then
         local err = table.concat(data, "\n")
-        utils.debug("Request error", { error = err })
+        if err ~= "" then
+          utils.debug("Request stderr", { error = err })
+        end
       end
     end,
     on_exit = function(_, code)
       if code ~= 0 then
-        callback(false, "Request failed with code: " .. code)
+        utils.warn("Request exited with code: " .. code)
       end
     end,
   })
@@ -128,7 +141,19 @@ function M.get_completion(context, callback)
       return
     end
 
-    local session_id = session.id
+    -- Debug: check session structure
+    utils.debug("Session created", { session = session })
+
+    -- Extract session ID (handle different response structures)
+    local session_id = session.id or session.sessionID or session.session_id
+    if not session_id then
+      utils.error("Session created but no ID found in response")
+      utils.debug("Session object", { session = session })
+      callback(false, "Session ID not found in response")
+      return
+    end
+
+    utils.debug("Using session", { id = session_id })
 
     -- Send completion request
     M.send_message(session_id, prompt, function(msg_success, result)
