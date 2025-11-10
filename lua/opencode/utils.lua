@@ -176,7 +176,17 @@ end
 ---@param t table Table to encode
 ---@return string json
 function M.encode_json(t)
-  return vim.fn.json_encode(t)
+  -- If table is empty, ensure it encodes as {} not []
+  if next(t) == nil then
+    return "{}"
+  end
+
+  -- Use vim.json.encode if available (Neovim 0.10+), otherwise fallback
+  if vim.json and vim.json.encode then
+    return vim.json.encode(t)
+  else
+    return vim.fn.json_encode(t)
+  end
 end
 
 ---Parse JSON string to table
