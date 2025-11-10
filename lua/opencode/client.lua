@@ -115,16 +115,38 @@ end
 ---Send message to session
 ---@param session_id string Session ID
 ---@param message string Message content
+---@param opts? table Optional parameters (model, agent, etc.)
 ---@param callback function Callback(success, result)
-function M.send_message(session_id, message, callback)
-  M.request("POST", "/session/" .. session_id .. "/message", {
+function M.send_message(session_id, message, opts, callback)
+  -- Handle optional opts parameter
+  if type(opts) == "function" then
+    callback = opts
+    opts = {}
+  end
+  opts = opts or {}
+
+  -- Get model configuration
+  local model_config = config.get_model()
+
+  local body = {
     parts = {
       {
         type = "text",
         text = message,
       },
     },
-  }, callback)
+  }
+
+  -- Add model configuration if provided
+  if model_config and model_config.provider and model_config.model_id then
+    body.model = {
+      providerID = model_config.provider,
+      modelID = model_config.model_id,
+    }
+    utils.debug("Using model", { provider = model_config.provider, model = model_config.model_id })
+  end
+
+  M.request("POST", "/session/" .. session_id .. "/message", body, callback)
 end
 
 ---Request completion
@@ -180,38 +202,26 @@ end
 ---@param context table Context information
 ---@return string prompt
 function M._build_completion_prompt(context)
+  -- Keep prompt very short to avoid context overflow
+  local before_lines = context.content_before or {}
+  local after_lines = context.content_after or {}
+
+  -- Only take last 10 lines before and 5 lines after
+  local before_start = math.max(1, #before_lines - 10)
+  local before_text = table.concat(vim.list_slice(before_lines, before_start), "\n")
+  local after_text = table.concat(vim.list_slice(after_lines, 1, 5), "\n")
+
   local lines = {
-    "Complete the following code:",
+    "Complete the code at cursor position:",
     "",
-    "File: " .. (context.file_path or "unknown"),
-    "Language: " .. (context.language or "unknown"),
-    "",
-    "Context before cursor:",
+    "```" .. (context.language or ""),
+    before_text,
+    "⎕ <-- cursor here",
+    after_text,
     "```",
+    "",
+    "Provide a brief code completion (one line or short snippet). No explanations.",
   }
-
-  -- Add content before cursor
-  if context.content_before then
-    vim.list_extend(lines, context.content_before)
-  end
-
-  table.insert(lines, "```")
-  table.insert(lines, "")
-  table.insert(lines, "Current line: " .. (context.current_line or ""))
-  table.insert(lines, "Cursor position: " .. (context.cursor_col or 0))
-  table.insert(lines, "")
-  table.insert(lines, "Context after cursor:")
-  table.insert(lines, "```")
-
-  -- Add content after cursor
-  if context.content_after then
-    vim.list_extend(lines, context.content_after)
-  end
-
-  table.insert(lines, "```")
-  table.insert(lines, "")
-  table.insert(lines, "Please provide a completion for the current cursor position.")
-  table.insert(lines, "Return only the completion text, no explanations.")
 
   return table.concat(lines, "\n")
 end

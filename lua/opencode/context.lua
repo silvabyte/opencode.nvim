@@ -16,13 +16,13 @@ function M.extract(bufnr)
   local file_path = vim.api.nvim_buf_get_name(bufnr)
   local filetype = vim.api.nvim_buf_get_option(bufnr, "filetype")
 
-  -- Get lines before cursor
-  local max_before = context_config.max_context_lines or 50
+  -- Get lines before cursor (keep small to avoid context overflow)
+  local max_before = 15  -- Reduced from 50
   local start_line = math.max(0, row - max_before)
   local content_before = utils.get_buffer_lines(bufnr, start_line, row)
 
   -- Get lines after cursor
-  local max_after = math.floor(max_before / 2)
+  local max_after = 5  -- Reduced for efficiency
   local content_after = utils.get_buffer_lines(bufnr, row + 1, row + 1 + max_after)
 
   -- Get current line
