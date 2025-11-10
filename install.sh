@@ -6,7 +6,7 @@ set -e
 echo "🚀 Installing opencode.nvim..."
 
 # Check if opencode is installed
-if ! command -v opencode &> /dev/null; then
+if ! command -v opencode &>/dev/null; then
   echo "❌ OpenCode not found. Install it first:"
   echo "   npm install -g @opencode-ai/cli"
   exit 1
@@ -25,15 +25,23 @@ LAZY_DIR="$NVIM_CONFIG/lua/plugins"
 if [ -d "$LAZY_DIR" ]; then
   echo "📦 Detected lazy.nvim"
 
-  cat > "$LAZY_DIR/opencode.lua" <<EOF
+  cat >"$LAZY_DIR/opencode.lua" <<EOF
 return {
   dir = '$(pwd)',
+  dependencies = {
+    'nvim-lua/plenary.nvim',
+  },
+  lazy = true,
+  event = 'InsertEnter',
   config = function()
-    require('opencode').setup({
-      completion = {
-        auto_trigger = false,  -- Use <C-]> to trigger
-      },
-    })
+    local ok, opencode = pcall(require, 'opencode')
+    if ok then
+      opencode.setup({
+        completion = {
+          auto_trigger = false,  -- Use <C-]> to trigger
+        },
+      })
+    end
   end,
 }
 EOF
