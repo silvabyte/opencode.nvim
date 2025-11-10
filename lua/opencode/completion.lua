@@ -28,26 +28,44 @@ function M.accept()
   local bufnr = current_bufnr or vim.api.nvim_get_current_buf()
   local row, col = utils.get_cursor_position(bufnr)
 
-  -- Insert suggestion text
+  -- Split text into lines
   local text = current_suggestion.text
-  vim.api.nvim_buf_set_text(bufnr, row, col, row, col, { text })
+  local lines = vim.split(text, "\n", { plain = true })
 
-  -- Move cursor to end of inserted text
-  vim.api.nvim_win_set_cursor(0, { row + 1, col + #text })
+  -- Insert the completion
+  if #lines == 1 then
+    -- Single line: insert at cursor
+    vim.api.nvim_buf_set_text(bufnr, row, col, row, col, lines)
+    -- Move cursor to end
+    vim.api.nvim_win_set_cursor(0, { row + 1, col + #lines[1] })
+  else
+    -- Multi-line: insert as multiple lines
+    vim.api.nvim_buf_set_text(bufnr, row, col, row, col, lines)
+    -- Move cursor to end of last line
+    vim.api.nvim_win_set_cursor(0, { row + #lines, #lines[#lines] })
+  end
 
-  -- Clear suggestion
+  -- Clear suggestion UI
   M.dismiss()
 
-  utils.debug("Accepted suggestion", { text = text })
+  utils.info("Completion accepted")
+  utils.debug("Accepted suggestion", { lines = #lines })
 end
 
 ---Dismiss current suggestion
 function M.dismiss()
-  current_suggestion = nil
-  current_bufnr = nil
+  if not current_suggestion and not current_bufnr then
+    return
+  end
 
-  -- Clear any virtual text or UI elements
-  -- TODO: Implement UI clearing
+  current_suggestion = nil
+
+  -- Clear UI
+  if current_bufnr then
+    local ui = require("opencode.ui")
+    ui.hide_inline_completion(current_bufnr)
+    current_bufnr = nil
+  end
 end
 
 ---Request completion manually
@@ -72,7 +90,12 @@ end
 function M._request_completion(ctx, bufnr)
   utils.debug("Requesting completion", { file = ctx.file_path })
 
+  local ui = require("opencode.ui")
+  ui.show_loading("Getting completion...")
+
   client.get_completion(ctx, function(success, completions)
+    ui.hide_loading()
+
     if not success then
       utils.debug("Completion failed", { error = completions })
       return
@@ -87,9 +110,30 @@ function M._request_completion(ctx, bufnr)
     current_suggestion = completions[1]
     current_bufnr = bufnr
 
-    -- Show suggestion (TODO: implement UI)
     utils.debug("Got completion", { text = current_suggestion.text })
+
+    -- Show inline suggestion
+    local row, col = utils.get_cursor_position(bufnr)
+    M._show_inline_suggestion(bufnr, row, col, current_suggestion.text)
   end)
+end
+
+---Show inline suggestion as ghost text
+---@param bufnr number Buffer number
+---@param row number Row (0-indexed)
+---@param col number Column (0-indexed)
+---@param text string Suggestion text
+function M._show_inline_suggestion(bufnr, row, col, text)
+  local ui = require("opencode.ui")
+
+  -- For multi-line completions, only show the first line inline
+  local lines = vim.split(text, "\n", { plain = true })
+  local inline_text = lines[1] or text
+
+  -- Show as ghost text at cursor position
+  ui.show_inline_completion(bufnr, row, col, inline_text)
+
+  utils.info("Completion ready - press <Tab> to accept")
 end
 
 ---Setup autocommands for auto-trigger

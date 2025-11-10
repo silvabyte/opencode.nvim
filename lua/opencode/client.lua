@@ -211,16 +211,24 @@ function M._build_completion_prompt(context)
   local before_text = table.concat(vim.list_slice(before_lines, before_start), "\n")
   local after_text = table.concat(vim.list_slice(after_lines, 1, 5), "\n")
 
+  local current_line = context.current_line or ""
+  local cursor_col = context.cursor_col or 0
+
+  -- Split current line at cursor
+  local line_before_cursor = current_line:sub(1, cursor_col)
+  local line_after_cursor = current_line:sub(cursor_col + 1)
+
   local lines = {
-    "Complete the code at cursor position:",
+    "Complete the code. Provide ONLY the completion text that should be inserted at the cursor.",
+    "Do NOT repeat the existing code. Do NOT add explanations or markdown.",
     "",
     "```" .. (context.language or ""),
     before_text,
-    "⎕ <-- cursor here",
+    line_before_cursor .. "⎕" .. line_after_cursor,
     after_text,
     "```",
     "",
-    "Provide a brief code completion (one line or short snippet). No explanations.",
+    "Complete at ⎕ (cursor position).",
   }
 
   return table.concat(lines, "\n")
@@ -241,12 +249,22 @@ function M._parse_completion_response(response)
   -- Extract text from all text parts
   for _, part in ipairs(response.parts) do
     if part.type == "text" and part.text then
-      -- For now, treat the entire response as one completion
-      -- In Phase 2, we'll do smarter parsing
-      table.insert(completions, {
-        text = part.text,
-        type = "completion",
-      })
+      local text = part.text
+
+      -- Strip markdown code fences
+      text = text:gsub("^%s*```[%w]*\n?", "") -- Remove opening fence
+      text = text:gsub("\n?```%s*$", "") -- Remove closing fence
+
+      -- Clean up whitespace
+      text = text:gsub("^%s+", "") -- Leading whitespace
+      text = text:gsub("%s+$", "") -- Trailing whitespace
+
+      if text ~= "" then
+        table.insert(completions, {
+          text = text,
+          type = "completion",
+        })
+      end
     end
   end
 
