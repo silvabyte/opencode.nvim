@@ -200,18 +200,23 @@ function M.decode_json(str)
   return nil
 end
 
----Log debug message (non-blocking, appends to :messages)
+---Log debug message (completely silent, only visible in :messages)
 ---@param msg string Message
 ---@param data? table Optional data to log
 function M.debug(msg, data)
   if vim.g.opencode_debug then
     local log_msg = "[OpenCode] " .. msg
     if data then
-      log_msg = log_msg .. " " .. vim.inspect(data)
+      -- Truncate large data to prevent message overflow
+      local data_str = vim.inspect(data)
+      if #data_str > 500 then
+        data_str = data_str:sub(1, 500) .. "... (truncated)"
+      end
+      log_msg = log_msg .. " " .. data_str
     end
-    -- Use vim.api.nvim_echo with history flag to add to :messages without blocking
+    -- Silently add to message history using execute (no display, no prompt)
     vim.schedule(function()
-      vim.api.nvim_echo({ { log_msg, "Comment" } }, true, {})
+      pcall(vim.fn.execute, string.format('echomsg %s', vim.fn.string(log_msg)), 'silent')
     end)
   end
 end

@@ -29,8 +29,8 @@ require('opencode').setup({
   },
 })
 
--- Enable debug mode
-vim.g.opencode_debug = true
+-- Disable debug mode for smooth UX (re-enable to see detailed logs in :messages)
+vim.g.opencode_debug = false
 
 -- Show status on startup
 vim.defer_fn(function()
