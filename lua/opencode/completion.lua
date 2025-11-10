@@ -48,7 +48,7 @@ function M.accept()
   -- Clear suggestion UI
   M.dismiss()
 
-  utils.info("Completion accepted")
+  -- Silent - just debug logging
   utils.debug("Accepted suggestion", { lines = #lines })
 end
 
@@ -133,7 +133,8 @@ function M._show_inline_suggestion(bufnr, row, col, text)
   -- Show as ghost text at cursor position
   ui.show_inline_completion(bufnr, row, col, inline_text)
 
-  utils.info("Completion ready - press <Tab> to accept")
+  -- Silent - ghost text is enough visual feedback
+  utils.debug("Showing inline completion", { text = inline_text })
 end
 
 ---Setup autocommands for auto-trigger

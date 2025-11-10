@@ -213,10 +213,11 @@ function M.debug(msg, data)
   end
 end
 
----Log info message
+---Log info message (non-blocking)
 ---@param msg string Message
 function M.info(msg)
-  vim.notify("[OpenCode] " .. msg, vim.log.levels.INFO)
+  -- Use echo instead of notify to avoid blocking
+  vim.api.nvim_echo({ { "[OpenCode] " .. msg, "Normal" } }, false, {})
 end
 
 ---Log warning message

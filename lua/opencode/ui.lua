@@ -107,17 +107,18 @@ function M.show_suggestion_window(items, opts)
   return win
 end
 
----Show loading indicator
+---Show loading indicator (non-blocking)
 ---@param message? string Loading message
 function M.show_loading(message)
   message = message or "Loading completions..."
-  vim.notify(message, vim.log.levels.INFO)
+  -- Use echo instead of notify to avoid blocking
+  vim.api.nvim_echo({ { "[OpenCode] " .. message, "Comment" } }, false, {})
 end
 
 ---Hide loading indicator
 function M.hide_loading()
-  -- For now, just a no-op
-  -- In the future, we could show a persistent notification
+  -- Clear the echo area
+  vim.api.nvim_echo({ { "", "Normal" } }, false, {})
 end
 
 ---Update statusline
