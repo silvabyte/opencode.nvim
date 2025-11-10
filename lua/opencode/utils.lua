@@ -200,7 +200,7 @@ function M.decode_json(str)
   return nil
 end
 
----Log debug message
+---Log debug message (non-blocking, appends to :messages)
 ---@param msg string Message
 ---@param data? table Optional data to log
 function M.debug(msg, data)
@@ -209,7 +209,10 @@ function M.debug(msg, data)
     if data then
       log_msg = log_msg .. " " .. vim.inspect(data)
     end
-    vim.notify(log_msg, vim.log.levels.DEBUG)
+    -- Use vim.api.nvim_echo with history flag to add to :messages without blocking
+    vim.schedule(function()
+      vim.api.nvim_echo({ { log_msg, "Comment" } }, true, {})
+    end)
   end
 end
 
@@ -220,16 +223,20 @@ function M.info(msg)
   vim.api.nvim_echo({ { "[OpenCode] " .. msg, "Normal" } }, false, {})
 end
 
----Log warning message
+---Log warning message (non-blocking)
 ---@param msg string Message
 function M.warn(msg)
-  vim.notify("[OpenCode] " .. msg, vim.log.levels.WARN)
+  vim.schedule(function()
+    vim.api.nvim_echo({ { "[OpenCode] " .. msg, "WarningMsg" } }, true, {})
+  end)
 end
 
----Log error message
+---Log error message (non-blocking)
 ---@param msg string Message
 function M.error(msg)
-  vim.notify("[OpenCode] " .. msg, vim.log.levels.ERROR)
+  vim.schedule(function()
+    vim.api.nvim_echo({ { "[OpenCode] " .. msg, "ErrorMsg" } }, true, {})
+  end)
 end
 
 ---Format timestamp
