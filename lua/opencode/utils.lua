@@ -216,7 +216,7 @@ function M.debug(msg, data)
     end
     -- Silently add to message history using execute (no display, no prompt)
     vim.schedule(function()
-      pcall(vim.fn.execute, string.format('echomsg %s', vim.fn.string(log_msg)), 'silent')
+      pcall(vim.fn.execute, string.format("echomsg %s", vim.fn.string(log_msg)), "silent")
     end)
   end
 end
@@ -257,10 +257,14 @@ end
 ---@param callback function Callback to run after sleep
 function M.sleep(ms, callback)
   local timer = vim.loop.new_timer()
-  timer:start(ms, 0, vim.schedule_wrap(function()
-    timer:close()
-    callback()
-  end))
+  timer:start(
+    ms,
+    0,
+    vim.schedule_wrap(function()
+      timer:close()
+      callback()
+    end)
+  )
 end
 
 return M

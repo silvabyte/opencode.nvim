@@ -101,7 +101,7 @@ end
 ---Create a new session
 ---@param project_dir string Project directory
 ---@param callback function Callback(success, session)
-function M.create_session(project_dir, callback)
+function M.create_session(_, callback)
   M.request("POST", "/session", {
     -- Optional: can send empty body or include directory
   }, callback)
@@ -195,7 +195,9 @@ end
 function M._set_cache(cache_key, completions)
   -- Evict old entries if cache is full
   local count = 0
-  for _ in pairs(completion_cache) do count = count + 1 end
+  for _ in pairs(completion_cache) do
+    count = count + 1
+  end
 
   if count >= MAX_CACHE_ENTRIES then
     -- Remove oldest entries
@@ -307,7 +309,7 @@ end
 
 ---Clear all pooled sessions
 function M.clear_session_pool()
-  for project_root, session_id in pairs(session_pool) do
+  for _, session_id in pairs(session_pool) do
     M.delete_session(session_id, function() end)
   end
   session_pool = {}

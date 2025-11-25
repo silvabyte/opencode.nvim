@@ -1,0 +1,5 @@
+# Selene vim standard library
+---
+globals:
+  vim:
+    any: true

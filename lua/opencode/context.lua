@@ -17,12 +17,12 @@ function M.extract(bufnr)
   local filetype = vim.api.nvim_buf_get_option(bufnr, "filetype")
 
   -- Get lines before cursor (keep small to avoid context overflow)
-  local max_before = 15  -- Reduced from 50
+  local max_before = 15 -- Reduced from 50
   local start_line = math.max(0, row - max_before)
   local content_before = utils.get_buffer_lines(bufnr, start_line, row)
 
   -- Get lines after cursor
-  local max_after = 5  -- Reduced for efficiency
+  local max_after = 5 -- Reduced for efficiency
   local content_after = utils.get_buffer_lines(bufnr, row + 1, row + 1 + max_after)
 
   -- Get current line
@@ -210,7 +210,7 @@ function M.truncate_context(context, max_tokens)
 
   -- Budget allocation (prioritize before-cursor context)
   local before_budget = math.floor(max_tokens * 0.7) -- 70% for before
-  local after_budget = math.floor(max_tokens * 0.2)  -- 20% for after
+  local after_budget = math.floor(max_tokens * 0.2) -- 20% for after
   local current_budget = math.floor(max_tokens * 0.1) -- 10% for current line
 
   -- Truncate before context (keep most recent lines)

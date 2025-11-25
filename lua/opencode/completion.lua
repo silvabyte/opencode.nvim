@@ -36,15 +36,15 @@ local prefetch_pending = false
 
 ---Patterns that often precede needing a completion
 local prefetch_triggers = {
-  "=$",           -- After assignment
-  ":%s*$",        -- After type annotation
-  "->%s*$",       -- After arrow
-  "=>%s*$",       -- After fat arrow
-  "return%s+$",   -- After return
+  "=$", -- After assignment
+  ":%s*$", -- After type annotation
+  "->%s*$", -- After arrow
+  "=>%s*$", -- After fat arrow
+  "return%s+$", -- After return
   "function%s*%(.*%)%s*$", -- After function signature
-  "{%s*$",        -- After opening brace
-  "%(%s*$",       -- After opening paren
-  ",%s*$",        -- After comma
+  "{%s*$", -- After opening brace
+  "%(%s*$", -- After opening paren
+  ",%s*$", -- After comma
 }
 
 ---Check if there's a pending suggestion
@@ -180,7 +180,8 @@ end
 ---@param ctx table Context
 ---@return string key
 local function get_context_key(ctx)
-  return string.format("%s:%d:%d:%s",
+  return string.format(
+    "%s:%d:%d:%s",
     ctx.file_path or "",
     ctx.cursor_line or 0,
     ctx.cursor_col or 0,
@@ -203,7 +204,7 @@ end
 ---Prefetch completion in background (doesn't show UI)
 ---@param ctx table Context
 ---@param bufnr number Buffer number
-local function prefetch_completion(ctx, bufnr)
+local function prefetch_completion(ctx, _bufnr)
   if prefetch_pending or request_pending then
     return
   end
@@ -416,7 +417,7 @@ function M.setup_autocmds()
     end
 
     -- Get current line before cursor
-    local row, col = utils.get_cursor_position(bufnr)
+    local _, col = utils.get_cursor_position(bufnr)
     local current_line = utils.get_current_line(bufnr)
     local line_before_cursor = current_line:sub(1, col)
 
@@ -495,7 +496,12 @@ function M._setup_keymaps()
     end
     -- Return actual tab if no suggestion
     return "<Tab>"
-  end, { expr = true, noremap = true, silent = true, desc = "Accept OpenCode suggestion or insert tab" })
+  end, {
+    expr = true,
+    noremap = true,
+    silent = true,
+    desc = "Accept OpenCode suggestion or insert tab",
+  })
 
   -- Ctrl+Right - Accept word
   vim.keymap.set("i", "<C-Right>", function()

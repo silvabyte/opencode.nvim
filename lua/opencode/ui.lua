@@ -50,9 +50,8 @@ function M.show_inline_completion(bufnr, row, col, text)
     return
   end
 
-  -- Get current line content for proper positioning
-  local current_line = vim.api.nvim_buf_get_lines(bufnr, row, row + 1, false)[1] or ""
-  local line_after_cursor = current_line:sub(col + 1)
+  -- Get current line content for proper positioning (reserved for future use)
+  -- local current_line = vim.api.nvim_buf_get_lines(bufnr, row, row + 1, false)[1] or ""
 
   -- First line: show as overlay at cursor position
   local first_line = lines[1] or ""

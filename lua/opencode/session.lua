@@ -82,10 +82,7 @@ function M.list()
     -- Display sessions
     local lines = { "Active OpenCode sessions:" }
     for _, session in ipairs(session_list) do
-      table.insert(
-        lines,
-        string.format("  - %s (%s)", session.id, session.directory or "unknown")
-      )
+      table.insert(lines, string.format("  - %s (%s)", session.id, session.directory or "unknown"))
     end
 
     vim.notify(table.concat(lines, "\n"), vim.log.levels.INFO)
@@ -101,7 +98,7 @@ function M.cleanup_sessions()
   end
 
   -- Clean up local session registry
-  for project_root, session in pairs(sessions) do
+  for project_root, _ in pairs(sessions) do
     -- TODO: Add age-based cleanup
     sessions[project_root] = nil
   end
