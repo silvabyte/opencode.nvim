@@ -1,5 +1,5 @@
 " opencode.nvim - AI-powered autocompletion using OpenCode
-" Maintainer: OpenCode Team
+" Maintainer: Mat Silva <matsilva@hey.com>
 " License: MIT
 
 if exists('g:loaded_opencode')
