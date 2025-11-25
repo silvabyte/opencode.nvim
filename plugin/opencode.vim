@@ -24,6 +24,7 @@ command! OpenCodeAcceptWord lua require('opencode').accept_word()
 command! OpenCodeAcceptLine lua require('opencode').accept_line()
 command! OpenCodeDismiss lua require('opencode').dismiss_suggestion()
 command! OpenCodeClearCache lua require('opencode').clear_cache()
+command! OpenCodeReset lua require('opencode').reset()
 
 " Legacy command aliases for backwards compatibility
 command! OpenCodeAcceptSuggestion lua require('opencode').accept_suggestion()

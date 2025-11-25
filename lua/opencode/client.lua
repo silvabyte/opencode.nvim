@@ -21,6 +21,22 @@ local CACHE_TTL = 30
 ---@type number Max cache entries
 local MAX_CACHE_ENTRIES = 50
 
+---@type number|nil Current job ID for cancellation
+local current_job_id = nil
+
+---@type number Request ID for deduplication (incremented on each request)
+local request_id = 0
+
+---Cancel any in-flight request
+function M.cancel()
+  if current_job_id then
+    pcall(vim.fn.jobstop, current_job_id)
+    current_job_id = nil
+  end
+  -- Bump request ID to invalidate any pending callbacks
+  request_id = request_id + 1
+end
+
 ---Make HTTP request to OpenCode server
 ---@param method string HTTP method
 ---@param path string API path
@@ -53,21 +69,22 @@ function M.request(method, path, body, callback)
 
   utils.debug("HTTP request", { method = method, path = path, url = full_url })
 
+  -- Cancel any previous request
+  M.cancel()
+
+  -- Capture current request ID for staleness check
+  local my_request_id = request_id
+
   -- Track state for this request
   local stdout_data = {}
   local stderr_data = {}
-  local callback_called = false
 
-  local function safe_callback(success, result)
-    if callback_called then
-      return
-    end
-    callback_called = true
-    callback(success, result)
+  local function is_stale()
+    return my_request_id ~= request_id
   end
 
-  -- Execute request
-  vim.fn.jobstart(cmd, {
+  -- Execute request and track job ID
+  current_job_id = vim.fn.jobstart(cmd, {
     stdout_buffered = true,
     stderr_buffered = true,
     on_stdout = function(_, data)
@@ -88,19 +105,30 @@ function M.request(method, path, body, callback)
         end
       end
     end,
-    on_exit = function(_, code)
+    on_exit = function(job_id, code)
+      -- Clear job ID if this is the current job
+      if current_job_id == job_id then
+        current_job_id = nil
+      end
+
+      -- Ignore stale responses (request was cancelled or superseded)
+      if is_stale() then
+        utils.debug("Ignoring stale response", { job_id = job_id })
+        return
+      end
+
       -- Process response on exit to ensure we have all data
       if code ~= 0 then
         local err_msg = #stderr_data > 0 and table.concat(stderr_data, "\n")
           or ("Request failed with code " .. code)
         utils.debug("Request failed", { code = code, stderr = err_msg })
-        safe_callback(false, err_msg)
+        callback(false, err_msg)
         return
       end
 
       if #stdout_data == 0 then
         utils.debug("Empty response from server")
-        safe_callback(false, "Empty response from server")
+        callback(false, "Empty response from server")
         return
       end
 
@@ -109,7 +137,7 @@ function M.request(method, path, body, callback)
       -- Check if response looks like HTML (error page)
       if response:match("^%s*<!") or response:match("<html") then
         utils.error("Received HTML instead of JSON")
-        safe_callback(false, "Server returned HTML error page")
+        callback(false, "Server returned HTML error page")
         return
       end
 
@@ -117,11 +145,11 @@ function M.request(method, path, body, callback)
 
       if decoded then
         utils.debug("API response", { decoded = decoded })
-        safe_callback(true, decoded)
+        callback(true, decoded)
       else
         utils.error("Failed to parse JSON response")
         utils.debug("Raw response", { response = response:sub(1, 500) })
-        safe_callback(false, "Failed to parse response: " .. response:sub(1, 200))
+        callback(false, "Failed to parse response: " .. response:sub(1, 200))
       end
     end,
   })

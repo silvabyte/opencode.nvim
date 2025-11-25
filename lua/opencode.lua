@@ -245,6 +245,14 @@ function M.clear_cache()
   end
 end
 
+---Reset completion state (useful when completions get stuck)
+function M.reset()
+  if M.completion and M.completion.reset then
+    M.completion.reset()
+    vim.notify("OpenCode completion state reset", vim.log.levels.INFO)
+  end
+end
+
 ---Get statusline component
 ---@return string
 function M.statusline()

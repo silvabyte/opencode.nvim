@@ -2,7 +2,6 @@
 
 import {
 	type CompletionItem,
-	CompletionItemKind,
 	createConnection,
 	type InitializeParams,
 	type InitializeResult,
@@ -19,10 +18,9 @@ const connection = createConnection(ProposedFeatures.all);
 // Text document manager
 const documents = new TextDocuments(TextDocument);
 
-// OpenCode client (to be initialized)
-const opencodeClient: any = null;
+// TODO: OpenCode client will be initialized in Phase 4
 
-connection.onInitialize((params: InitializeParams): InitializeResult => {
+connection.onInitialize((_params: InitializeParams): InitializeResult => {
 	connection.console.log("[OpenCode LSP] Initializing...");
 
 	return {

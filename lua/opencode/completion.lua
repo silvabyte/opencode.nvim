@@ -19,8 +19,8 @@ local suggestion_row = nil
 ---@type number? Col where suggestion was shown
 local suggestion_col = nil
 
----@type boolean Is a request currently pending?
-local request_pending = false
+---@type number Request ID for deduplication (bumped on each new request)
+local completion_request_id = 0
 
 ---@type function? Debounced request function
 local debounced_request = nil
@@ -31,8 +31,8 @@ local prefetched_suggestion = nil
 ---@type string? Context key for prefetched suggestion
 local prefetched_context_key = nil
 
----@type boolean Is prefetch in progress?
-local prefetch_pending = false
+---@type number Prefetch request ID for deduplication
+local prefetch_request_id = 0
 
 ---Patterns that often precede needing a completion
 local prefetch_triggers = {
@@ -198,6 +198,31 @@ function M.dismiss()
   end
 end
 
+---Force reset all completion state (useful for recovery)
+function M.reset()
+  -- Bump request IDs to invalidate any pending callbacks
+  completion_request_id = completion_request_id + 1
+  prefetch_request_id = prefetch_request_id + 1
+
+  -- Cancel any in-flight HTTP request
+  client.cancel()
+
+  -- Reset suggestion state
+  current_suggestion = nil
+  current_bufnr = nil
+  suggestion_row = nil
+  suggestion_col = nil
+  prefetched_suggestion = nil
+  prefetched_context_key = nil
+
+  -- Clear UI
+  local ui = require("opencode.ui")
+  ui.hide_loading()
+  ui.hide_inline_completion(vim.api.nvim_get_current_buf())
+
+  utils.debug("Completion state reset")
+end
+
 ---Generate a context key for caching/prefetching
 ---@param ctx table Context
 ---@return string key
@@ -227,10 +252,6 @@ end
 ---@param ctx table Context
 ---@param bufnr number Buffer number
 local function prefetch_completion(ctx, _bufnr)
-  if prefetch_pending or request_pending then
-    return
-  end
-
   local context_key = get_context_key(ctx)
 
   -- Don't prefetch if we already have this context
@@ -238,11 +259,18 @@ local function prefetch_completion(ctx, _bufnr)
     return
   end
 
-  prefetch_pending = true
+  -- Bump prefetch ID to invalidate any previous prefetch
+  prefetch_request_id = prefetch_request_id + 1
+  local my_prefetch_id = prefetch_request_id
+
   utils.debug("Prefetching completion", { file = ctx.file_path })
 
   client.get_completion(ctx, function(success, completions)
-    prefetch_pending = false
+    -- Ignore if this prefetch was superseded
+    if my_prefetch_id ~= prefetch_request_id then
+      utils.debug("Ignoring stale prefetch response")
+      return
+    end
 
     if not success or not completions or #completions == 0 then
       return
@@ -305,11 +333,6 @@ end
 ---@param ctx table Context
 ---@param bufnr number Buffer number
 function M._request_completion(ctx, bufnr)
-  if request_pending then
-    utils.debug("Request already pending, skipping")
-    return
-  end
-
   local ui = require("opencode.ui")
   local row, col = utils.get_cursor_position(bufnr)
 
@@ -323,16 +346,28 @@ function M._request_completion(ctx, bufnr)
     return
   end
 
-  request_pending = true
-  utils.debug("Requesting completion", { file = ctx.file_path })
+  -- Bump request ID to invalidate any previous request and cancel in-flight HTTP
+  completion_request_id = completion_request_id + 1
+  local my_request_id = completion_request_id
+
+  -- Cancel any in-flight request (kills the curl process)
+  client.cancel()
+
+  utils.debug("Requesting completion", { file = ctx.file_path, request_id = my_request_id })
 
   ui.show_loading(bufnr, row, col)
 
   client.get_completion(ctx, function(success, completions)
-    request_pending = false
+    -- Ignore stale responses (request was superseded by a newer one)
+    if my_request_id ~= completion_request_id then
+      utils.debug("Ignoring stale completion response", { request_id = my_request_id })
+      return
+    end
+
+    -- Hide loading indicator
     ui.hide_loading()
 
-    -- Check if buffer is still valid and cursor hasn't moved significantly
+    -- Check if buffer is still valid
     if not vim.api.nvim_buf_is_valid(bufnr) then
       return
     end
