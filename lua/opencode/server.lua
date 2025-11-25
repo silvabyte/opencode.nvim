@@ -37,7 +37,10 @@ function M.start(opts)
 
   -- Check if opencode command exists
   if not utils.has_command("opencode") then
-    utils.error("opencode command not found. Please install OpenCode first.")
+    vim.notify(
+      "opencode CLI not found. Run :checkhealth opencode for install instructions.",
+      vim.log.levels.ERROR
+    )
     return false
   end
 
