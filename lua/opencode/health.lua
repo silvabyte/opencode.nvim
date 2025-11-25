@@ -20,6 +20,7 @@ M.check = function()
     vim.health.ok("opencode CLI found: " .. vim.trim(version))
   else
     vim.health.error("opencode CLI not found", {
+      -- TODO: update link to opencode.ai
       "Install: npm install -g @opencode-ai/cli",
       "Or: go install github.com/opencode-ai/opencode@latest",
     })

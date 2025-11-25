@@ -17,7 +17,9 @@ AI-powered code completion for Neovim.
 return {
   "silvabyte/opencode.nvim",
   dependencies = { "nvim-lua/plenary.nvim" },
-  event = "InsertEnter",
+  -- Use "VeryLazy" if you want voice commands available immediately
+  -- Use "InsertEnter" if you only need completions
+  event = "VeryLazy",
   -- Options
   opts = {
     completion = {
@@ -53,3 +55,35 @@ Run `:checkhealth opencode` to verify.
 ## Commands
 
 `:OpenCodeToggle` · `:OpenCodeStatus` · `:OpenCodeClearCache`
+
+## Voice Commands
+
+Voice-triggered AI coding assistance via [Audetic](https://github.com/silvabyte/audetic) VTT integration.
+
+```lua
+opts = {
+  voice = {
+    enabled = true,
+    keybind = "<leader>r",  -- Push-to-talk
+  },
+}
+```
+
+| Key | Action |
+|-----|--------|
+| `<leader>r` | Start/stop voice recording |
+
+| Command | Action |
+|---------|--------|
+| `:OpenCodeVoice` | Toggle voice recording |
+| `:OpenCodeVoiceCancel` | Cancel active voice operation |
+| `:OpenCodeVoiceStatus` | Show voice state |
+
+### How It Works
+
+1. Press `<leader>r` to start recording
+2. Speak your command (e.g., "complete this function", "add error handling")
+3. Press `<leader>r` again to stop
+4. OpenCode executes your command agentically on the current buffer
+
+**Requirements:** [Audetic](https://github.com/silvabyte/audetic) must be running (`audetic` command).

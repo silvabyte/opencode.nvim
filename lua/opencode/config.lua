@@ -7,6 +7,7 @@
 ---@field context? OpenCodeContextConfig
 ---@field session? OpenCodeSessionConfig
 ---@field ui? OpenCodeUIConfig
+---@field voice? OpenCodeVoiceConfig
 
 ---@class OpenCodeServerConfig
 ---@field url? string Server URL (nil = auto-start)
@@ -44,6 +45,10 @@
 ---@field inline_hl_group? string Highlight group for inline text
 ---@field suggestion_border? string Border style for windows
 ---@field statusline? boolean Show in statusline
+
+---@class OpenCodeVoiceConfig
+---@field enabled? boolean Enable voice commands
+---@field keybind? string Push-to-talk keybind
 
 local M = {}
 
@@ -99,6 +104,12 @@ end
 ---@return OpenCodeUIConfig
 function M.get_ui()
   return M.get().ui
+end
+
+---Get voice configuration
+---@return OpenCodeVoiceConfig
+function M.get_voice()
+  return M.get().voice
 end
 
 ---Update configuration value

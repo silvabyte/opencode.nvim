@@ -42,7 +42,9 @@ end
 ---@param path string API path
 ---@param body? table Request body
 ---@param callback function Callback(success, result)
-function M.request(method, path, body, callback)
+---@param opts? table Optional request options (timeout, etc.)
+function M.request(method, path, body, callback, opts)
+  opts = opts or {}
   local url = server.get_url()
   if not url then
     callback(false, "Server not running")
@@ -51,8 +53,9 @@ function M.request(method, path, body, callback)
 
   local full_url = url .. path
 
-  -- Build curl command with timeout
-  local cmd = { "curl", "-s", "-X", method, "--max-time", "30" }
+  -- Build curl command with timeout (default 30s, configurable via opts)
+  local timeout = opts.timeout or 30
+  local cmd = { "curl", "-s", "-X", method, "--max-time", tostring(timeout) }
 
   -- Always add JSON headers
   table.insert(cmd, "-H")
@@ -218,7 +221,13 @@ function M.send_message(session_id, message, opts, callback)
     utils.debug("Using model", { provider = model_config.provider, model = model_config.model_id })
   end
 
-  M.request("POST", "/session/" .. session_id .. "/message", body, callback)
+  -- Pass through request options (e.g., timeout)
+  local request_opts = {}
+  if opts.timeout then
+    request_opts.timeout = opts.timeout
+  end
+
+  M.request("POST", "/session/" .. session_id .. "/message", body, callback, request_opts)
 end
 
 ---Generate cache key from context
