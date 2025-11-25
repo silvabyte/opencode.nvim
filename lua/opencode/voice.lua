@@ -57,8 +57,8 @@ local current_session_id = nil
 ---@type string[] Event log for displaying in UI
 local event_log = {}
 
----@type number Max events to keep in log
-local MAX_EVENT_LOG = 5
+---@type number Max events to keep in log (only showing latest)
+local MAX_EVENT_LOG = 1
 
 ---Make HTTP request to Audetic API
 ---@param method string HTTP method
@@ -124,7 +124,9 @@ end
 ---Add event to log and update UI
 ---@param event_text string Event text to display
 local function add_event_to_log(event_text)
-  table.insert(event_log, 1, event_text)
+  -- Sanitize: replace newlines with spaces to avoid nvim_buf_set_lines errors
+  local sanitized = event_text:gsub("\r?\n", " "):gsub("%s+", " ")
+  table.insert(event_log, 1, sanitized)
   if #event_log > MAX_EVENT_LOG then
     table.remove(event_log)
   end
@@ -138,17 +140,11 @@ local function update_executing_ui(command)
     cmd_text = cmd_text:sub(1, 32) .. "..."
   end
 
-  local lines = { 'Heard: "' .. cmd_text .. '"', "" }
+  -- Show latest event as the title, command below
+  local status = event_log[1] or "Waiting for agent..."
+  local lines = { 'Heard: "' .. cmd_text .. '"' }
 
-  if #event_log > 0 then
-    for _, event in ipairs(event_log) do
-      table.insert(lines, event)
-    end
-  else
-    table.insert(lines, "Waiting for agent...")
-  end
-
-  show_feedback_window("⠋ Executing...", lines, "DiagnosticInfo")
+  show_feedback_window("⠋ " .. status, lines, "DiagnosticInfo")
 end
 
 ---Parse SSE event data
@@ -175,7 +171,11 @@ local function handle_sse_event(data, command)
   -- Filter events for our session
   local event_type = data.type
   local properties = data.properties or {}
-  local session_id = properties.sessionID or properties.session_id
+
+  -- Get session ID from different event structures
+  local session_id = properties.sessionID
+    or (properties.info and properties.info.sessionID)
+    or (properties.part and properties.part.sessionID)
 
   -- Only process events that match our current session
   -- Skip if we have a session filter and this event has a different session
@@ -188,37 +188,79 @@ local function handle_sse_event(data, command)
     return
   end
 
-  utils.debug("SSE event", { type = event_type, data = data })
+  utils.debug("SSE event", { type = event_type, properties = properties })
 
-  -- Handle different event types
-  if event_type == "message.created" then
-    add_event_to_log("Starting...")
-  elseif event_type == "part.created" or event_type == "part.updated" then
-    local part_type = properties.type
-    if part_type == "tool-invocation" then
-      local tool_name = properties.name or properties.toolName or "tool"
-      add_event_to_log("🔧 " .. tool_name)
-    elseif part_type == "text" then
-      local text = properties.text or ""
-      if #text > 40 then
-        text = text:sub(1, 37) .. "..."
-      end
-      if text ~= "" then
-        add_event_to_log("💬 " .. text)
-      end
-    elseif part_type == "reasoning" then
-      add_event_to_log("🤔 Thinking...")
-    elseif part_type == "step-start" then
-      add_event_to_log("▶ Step started")
-    elseif part_type == "step-finish" then
-      add_event_to_log("✓ Step complete")
+  -- Handle different event types based on OpenCode SDK types
+  if event_type == "message.updated" then
+    local info = properties.info
+    if info and info.role == "assistant" then
+      add_event_to_log("🤖 Processing...")
     end
-  elseif event_type == "message.completed" then
-    add_event_to_log("✓ Done")
+  elseif event_type == "message.part.updated" then
+    local part = properties.part
+    if part then
+      local part_type = part.type
+      if part_type == "tool" then
+        -- Tool invocation
+        local tool_name = part.tool or "tool"
+        local state = part.state
+        if state then
+          if state.status == "running" then
+            local title = state.title or tool_name
+            add_event_to_log("🔧 " .. title)
+          elseif state.status == "completed" then
+            local title = state.title or tool_name
+            add_event_to_log("✓ " .. title)
+          elseif state.status == "error" then
+            add_event_to_log("✗ " .. tool_name .. " failed")
+          end
+        else
+          add_event_to_log("🔧 " .. tool_name)
+        end
+      elseif part_type == "text" then
+        local text = part.text or properties.delta or ""
+        if #text > 50 then
+          text = text:sub(1, 47) .. "..."
+        end
+        -- Only show non-empty text
+        text = text:gsub("^%s+", ""):gsub("%s+$", "")
+        if text ~= "" then
+          add_event_to_log("💬 " .. text)
+        end
+      elseif part_type == "reasoning" then
+        add_event_to_log("🤔 Thinking...")
+      elseif part_type == "step-start" then
+        add_event_to_log("▶ Starting step...")
+      elseif part_type == "step-finish" then
+        add_event_to_log("✓ Step complete")
+      elseif part_type == "agent" then
+        local agent_name = part.name or "agent"
+        add_event_to_log("🤖 " .. agent_name)
+      end
+    end
   elseif event_type == "session.updated" then
-    local summary = properties.summary
-    if summary and summary.files and summary.files > 0 then
-      add_event_to_log(string.format("📝 %d file(s) modified", summary.files))
+    local info = properties.info
+    if info and info.summary then
+      local summary = info.summary
+      if summary.files and summary.files > 0 then
+        add_event_to_log(string.format("📝 %d file(s) modified", summary.files))
+      end
+    end
+  elseif event_type == "session.status" then
+    local status = properties.status
+    if status then
+      if status.type == "busy" then
+        add_event_to_log("⏳ Working...")
+      elseif status.type == "idle" then
+        add_event_to_log("✓ Complete")
+      end
+    end
+  elseif event_type == "file.edited" then
+    local file = properties.file
+    if file then
+      -- Get just the filename
+      local filename = file:match("([^/]+)$") or file
+      add_event_to_log("📝 Edited " .. filename)
     end
   end
 
