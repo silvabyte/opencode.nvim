@@ -44,6 +44,10 @@ local default_config = {
     suggestion_border = "rounded",
     statusline = true,
   },
+  voice = {
+    enabled = true,
+    keybind = "<leader>r", -- Push-to-talk keybind
+  },
 }
 
 ---Setup opencode.nvim
@@ -92,6 +96,13 @@ function M.setup(opts)
   local ui_ok, ui_module = pcall(require, "opencode.ui")
   if ui_ok and ui_module.setup_highlights then
     ui_module.setup_highlights()
+  end
+
+  -- Load voice module
+  local voice_ok, voice_module = pcall(require, "opencode.voice")
+  if voice_ok then
+    M.voice = voice_module
+    voice_module.setup()
   end
 
   -- Auto-start server if configured
