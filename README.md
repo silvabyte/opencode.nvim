@@ -1,59 +1,40 @@
 # opencode.nvim
 
-AI-powered autocompletion plugin for Neovim using [OpenCode](https://github.com/opencode-ai/opencode).
+AI-powered code completion for Neovim.
 
-## Features
+## Install
 
-- 🤖 AI-powered code completions using OpenCode's SDK
-- 🔌 Multi-provider support (Anthropic, OpenAI, Google, local models)
-- 🌳 Smart context extraction with Tree-sitter
-- 💬 Inline ghost text (like GitHub Copilot)
-- 🎯 File system-aware completions
-- 🔄 Session management per project
-- ⚡ Async, non-blocking completions
-- 🎨 Highly configurable
+Requires [OpenCode](https://github.com/opencode-ai/opencode) and Neovim 0.9+.
 
-## Requirements
-
-- Neovim >= 0.9.0
-- [OpenCode](https://github.com/opencode-ai/opencode) installed
-- Node.js >= 18 (for LSP server, optional)
-- [plenary.nvim](https://github.com/nvim-lua/plenary.nvim)
-- [nvim-cmp](https://github.com/hrsh7th/nvim-cmp) (optional, for completion UI)
-
-## Installation
-
-```bash
-cd /home/matsilva/code/opencode.nvim
-./install.sh
+**lazy.nvim:**
+```lua
+{
+  "your-username/opencode.nvim",
+  dependencies = { "nvim-lua/plenary.nvim" },
+  event = "InsertEnter",
+  opts = {},
+}
 ```
-
-That's it. Restart Neovim.
 
 ## Usage
 
-**Press `<C-]>`** in insert mode → ghost text appears → **press `<Tab>`** to accept.
+| Key | Action |
+|-----|--------|
+| `<C-]>` | Trigger completion |
+| `<Tab>` | Accept suggestion |
+| `<C-e>` | Dismiss |
 
-See [USAGE.md](./USAGE.md) for details.
-
-## Configuration
-
-Optional. Edit `~/.config/nvim/lua/plugins/opencode.lua` to customize:
+## Config
 
 ```lua
-require('opencode').setup({
+opts = {
   completion = {
-    auto_trigger = true,  -- Auto-complete on typing (default: false)
+    auto_trigger = true,  -- suggest as you type
+    debounce = 150,       -- ms delay
   },
-})
+}
 ```
 
-See [INSTALL.md](./INSTALL.md) for all options.
+## Commands
 
-## Status
-
-✅ Working. Iterated based on real usage.
-
-## License
-
-MIT
+`:OpenCodeToggle` · `:OpenCodeStatus` · `:OpenCodeClearCache`

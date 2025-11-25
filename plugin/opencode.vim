@@ -18,22 +18,28 @@ command! OpenCodeStatus lua print(require('opencode').status())
 command! OpenCodeToggle lua require('opencode').toggle()
 command! OpenCodeSessionNew lua require('opencode').session.create_new()
 command! OpenCodeSessionList lua require('opencode').session.list()
+command! OpenCodeComplete lua require('opencode').request_completion()
+command! OpenCodeAccept lua require('opencode').accept_suggestion()
+command! OpenCodeAcceptWord lua require('opencode').accept_word()
+command! OpenCodeAcceptLine lua require('opencode').accept_line()
+command! OpenCodeDismiss lua require('opencode').dismiss_suggestion()
+command! OpenCodeClearCache lua require('opencode').clear_cache()
+
+" Legacy command aliases for backwards compatibility
 command! OpenCodeAcceptSuggestion lua require('opencode').accept_suggestion()
 command! OpenCodeDismissSuggestion lua require('opencode').dismiss_suggestion()
 
 " Default keymaps (can be disabled with g:opencode_disable_default_keymaps)
+" Note: Most keymaps are now set up in the completion module for better integration
 if !exists('g:opencode_disable_default_keymaps') || !g:opencode_disable_default_keymaps
-  " Insert mode - accept suggestion with Tab (if available)
-  inoremap <expr> <silent> <Tab> luaeval("require('opencode').has_suggestion()") ? "<Cmd>OpenCodeAcceptSuggestion<CR>" : "<Tab>"
-
-  " Insert mode - request completion manually
-  inoremap <silent> <C-]> <Cmd>lua require('opencode').request_completion()<CR>
-
   " Normal mode - toggle
   nnoremap <silent> <leader>oc <Cmd>OpenCodeToggle<CR>
 
   " Normal mode - status
   nnoremap <silent> <leader>os <Cmd>OpenCodeStatus<CR>
+
+  " Normal mode - clear cache
+  nnoremap <silent> <leader>ox <Cmd>OpenCodeClearCache<CR>
 endif
 
 " Restore cpoptions

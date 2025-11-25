@@ -6,6 +6,21 @@ local config = require("opencode.config")
 local utils = require("opencode.utils")
 local server = require("opencode.server")
 
+---@type table<string, string> Session pool keyed by project root
+local session_pool = {}
+
+---@type table<string, number> Session last used timestamps
+local session_last_used = {}
+
+---@type table<string, table> Completion cache keyed by context hash
+local completion_cache = {}
+
+---@type number Cache TTL in seconds
+local CACHE_TTL = 30
+
+---@type number Max cache entries
+local MAX_CACHE_ENTRIES = 50
+
 ---Make HTTP request to OpenCode server
 ---@param method string HTTP method
 ---@param path string API path
@@ -149,67 +164,173 @@ function M.send_message(session_id, message, opts, callback)
   M.request("POST", "/session/" .. session_id .. "/message", body, callback)
 end
 
----Request completion
+---Generate cache key from context
 ---@param context table Completion context
----@param callback function Callback(success, completions)
-function M.get_completion(context, callback)
-  -- Build completion request
-  local prompt = M._build_completion_prompt(context)
+---@return string cache_key
+function M._get_cache_key(context)
+  local key_parts = {
+    context.file_path or "",
+    tostring(context.cursor_line or 0),
+    tostring(context.cursor_col or 0),
+    context.current_line or "",
+  }
+  return table.concat(key_parts, ":")
+end
 
-  -- Create or get session for this buffer
-  local project_root = context.project_root or utils.get_project_root()
+---Check and return cached completion if valid
+---@param cache_key string Cache key
+---@return table|nil completions Cached completions or nil
+function M._get_cached(cache_key)
+  local cached = completion_cache[cache_key]
+  if cached and (os.time() - cached.timestamp) < CACHE_TTL then
+    utils.debug("Cache hit", { key = cache_key })
+    return cached.completions
+  end
+  return nil
+end
 
-  -- For now, create a temporary session for each completion
-  -- TODO: Implement session pooling/reuse
+---Store completion in cache
+---@param cache_key string Cache key
+---@param completions table Completions to cache
+function M._set_cache(cache_key, completions)
+  -- Evict old entries if cache is full
+  local count = 0
+  for _ in pairs(completion_cache) do count = count + 1 end
+
+  if count >= MAX_CACHE_ENTRIES then
+    -- Remove oldest entries
+    local oldest_key, oldest_time = nil, os.time()
+    for key, entry in pairs(completion_cache) do
+      if entry.timestamp < oldest_time then
+        oldest_key, oldest_time = key, entry.timestamp
+      end
+    end
+    if oldest_key then
+      completion_cache[oldest_key] = nil
+    end
+  end
+
+  completion_cache[cache_key] = {
+    completions = completions,
+    timestamp = os.time(),
+  }
+end
+
+---Get or create a pooled session for a project
+---@param project_root string Project root directory
+---@param callback function Callback(success, session_id)
+function M._get_pooled_session(project_root, callback)
+  -- Check if we have a valid pooled session
+  local existing_session = session_pool[project_root]
+  if existing_session then
+    session_last_used[project_root] = os.time()
+    utils.debug("Reusing pooled session", { id = existing_session })
+    callback(true, existing_session)
+    return
+  end
+
+  -- Create new session and pool it
   M.create_session(project_root, function(success, session)
     if not success then
-      callback(false, "Failed to create session: " .. tostring(session))
+      callback(false, session)
       return
     end
 
-    -- Debug: check session structure
-    utils.debug("Session created", { session = session })
-
-    -- Extract session ID (handle different response structures)
     local session_id = session.id or session.sessionID or session.session_id
     if not session_id then
-      utils.error("Session created but no ID found in response")
-      utils.debug("Session object", { session = session })
       callback(false, "Session ID not found in response")
       return
     end
 
-    utils.debug("Using session", { id = session_id })
+    -- Pool the session
+    session_pool[project_root] = session_id
+    session_last_used[project_root] = os.time()
+    utils.debug("Created and pooled session", { id = session_id, project = project_root })
 
-    -- Send completion request
+    callback(true, session_id)
+  end)
+end
+
+---Request completion with session pooling and caching
+---@param context table Completion context
+---@param callback function Callback(success, completions)
+function M.get_completion(context, callback)
+  -- Check cache first
+  local cache_key = M._get_cache_key(context)
+  local cached = M._get_cached(cache_key)
+  if cached then
+    -- Return cached result immediately via vim.schedule for consistent async behavior
+    vim.schedule(function()
+      callback(true, cached)
+    end)
+    return
+  end
+
+  -- Build completion request
+  local prompt = M._build_completion_prompt(context)
+
+  -- Get or create pooled session
+  local project_root = context.project_root or utils.get_project_root()
+
+  M._get_pooled_session(project_root, function(success, session_id)
+    if not success then
+      callback(false, "Failed to get session: " .. tostring(session_id))
+      return
+    end
+
+    -- Send completion request (don't delete session - it's pooled)
     M.send_message(session_id, prompt, function(msg_success, result)
-      -- Clean up session
-      M.delete_session(session_id, function() end)
-
       if not msg_success then
+        -- Session might be stale, invalidate and retry once
+        if session_pool[project_root] then
+          session_pool[project_root] = nil
+          utils.debug("Session stale, retrying with new session")
+          M.get_completion(context, callback)
+          return
+        end
         callback(false, "Failed to get completion: " .. tostring(result))
         return
       end
 
       -- Parse completion from response
       local completions = M._parse_completion_response(result)
+
+      -- Cache the result
+      if completions and #completions > 0 then
+        M._set_cache(cache_key, completions)
+      end
+
       callback(true, completions)
     end)
   end)
+end
+
+---Clear all pooled sessions
+function M.clear_session_pool()
+  for project_root, session_id in pairs(session_pool) do
+    M.delete_session(session_id, function() end)
+  end
+  session_pool = {}
+  session_last_used = {}
+  utils.debug("Cleared session pool")
+end
+
+---Clear completion cache
+function M.clear_cache()
+  completion_cache = {}
+  utils.debug("Cleared completion cache")
 end
 
 ---Build completion prompt from context
 ---@param context table Context information
 ---@return string prompt
 function M._build_completion_prompt(context)
-  -- Keep prompt very short to avoid context overflow
   local before_lines = context.content_before or {}
   local after_lines = context.content_after or {}
 
-  -- Only take last 10 lines before and 5 lines after
-  local before_start = math.max(1, #before_lines - 10)
-  local before_text = table.concat(vim.list_slice(before_lines, before_start), "\n")
-  local after_text = table.concat(vim.list_slice(after_lines, 1, 5), "\n")
+  -- Use all available context (already truncated by context module)
+  local before_text = table.concat(before_lines, "\n")
+  local after_text = table.concat(after_lines, "\n")
 
   local current_line = context.current_line or ""
   local cursor_col = context.cursor_col or 0
@@ -218,20 +339,29 @@ function M._build_completion_prompt(context)
   local line_before_cursor = current_line:sub(1, cursor_col)
   local line_after_cursor = current_line:sub(cursor_col + 1)
 
-  local lines = {
-    "Complete the code. Provide ONLY the completion text that should be inserted at the cursor.",
-    "Do NOT repeat the existing code. Do NOT add explanations or markdown.",
+  -- Build concise, effective prompt
+  local prompt_parts = {
+    "Complete the code at █. Output ONLY the code to insert, nothing else.",
     "",
     "```" .. (context.language or ""),
-    before_text,
-    line_before_cursor .. "⎕" .. line_after_cursor,
-    after_text,
-    "```",
-    "",
-    "Complete at ⎕ (cursor position).",
   }
 
-  return table.concat(lines, "\n")
+  -- Add before context if available
+  if before_text ~= "" then
+    table.insert(prompt_parts, before_text)
+  end
+
+  -- Add current line with cursor marker
+  table.insert(prompt_parts, line_before_cursor .. "█" .. line_after_cursor)
+
+  -- Add after context if available
+  if after_text ~= "" then
+    table.insert(prompt_parts, after_text)
+  end
+
+  table.insert(prompt_parts, "```")
+
+  return table.concat(prompt_parts, "\n")
 end
 
 ---Parse completion response

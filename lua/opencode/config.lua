@@ -1,48 +1,49 @@
 ---Configuration management for opencode.nvim
+---User config (all fields optional, merged with defaults)
 ---@class OpenCodeConfig
----@field server OpenCodeServerConfig
----@field completion OpenCodeCompletionConfig
----@field model OpenCodeModelConfig
----@field context OpenCodeContextConfig
----@field session OpenCodeSessionConfig
----@field ui OpenCodeUIConfig
+---@field server? OpenCodeServerConfig
+---@field completion? OpenCodeCompletionConfig
+---@field model? OpenCodeModelConfig
+---@field context? OpenCodeContextConfig
+---@field session? OpenCodeSessionConfig
+---@field ui? OpenCodeUIConfig
 
 ---@class OpenCodeServerConfig
 ---@field url? string Server URL (nil = auto-start)
----@field port number Server port
----@field auto_start boolean Auto-start server
----@field timeout number Request timeout in ms
+---@field port? number Server port
+---@field auto_start? boolean Auto-start server
+---@field timeout? number Request timeout in ms
 
 ---@class OpenCodeCompletionConfig
----@field enabled boolean Enable completions
----@field auto_trigger boolean Auto-trigger on typing
----@field trigger_chars string[] Characters that trigger completion
----@field debounce number Debounce delay in ms
----@field max_context_lines number Max lines of context
----@field show_inline boolean Show inline suggestions
----@field accept_key string Key to accept suggestion
----@field dismiss_key string Key to dismiss suggestion
+---@field enabled? boolean Enable completions
+---@field auto_trigger? boolean Auto-trigger on typing
+---@field trigger_chars? string[] Characters that trigger completion
+---@field debounce? number Debounce delay in ms
+---@field max_context_lines? number Max lines of context
+---@field show_inline? boolean Show inline suggestions
+---@field accept_key? string Key to accept suggestion
+---@field dismiss_key? string Key to dismiss suggestion
 
 ---@class OpenCodeModelConfig
----@field provider string AI provider
----@field model_id string Model identifier
----@field temperature number Temperature setting
+---@field provider? string AI provider
+---@field model_id? string Model identifier
+---@field temperature? number Temperature setting
 
 ---@class OpenCodeContextConfig
----@field include_imports boolean Include import statements
----@field include_recent_files boolean Include recently edited files
----@field use_treesitter boolean Use Tree-sitter for parsing
----@field max_tokens number Maximum context tokens
+---@field include_imports? boolean Include import statements
+---@field include_recent_files? boolean Include recently edited files
+---@field use_treesitter? boolean Use Tree-sitter for parsing
+---@field max_tokens? number Maximum context tokens
 
 ---@class OpenCodeSessionConfig
----@field per_project boolean One session per project
----@field persist boolean Persist sessions
----@field auto_cleanup boolean Auto cleanup old sessions
+---@field per_project? boolean One session per project
+---@field persist? boolean Persist sessions
+---@field auto_cleanup? boolean Auto cleanup old sessions
 
 ---@class OpenCodeUIConfig
----@field inline_hl_group string Highlight group for inline text
----@field suggestion_border string Border style for windows
----@field statusline boolean Show in statusline
+---@field inline_hl_group? string Highlight group for inline text
+---@field suggestion_border? string Border style for windows
+---@field statusline? boolean Show in statusline
 
 local M = {}
 
@@ -50,9 +51,9 @@ local M = {}
 M._config = nil
 
 ---Setup configuration
----@param opts OpenCodeConfig User configuration
+---@param opts? OpenCodeConfig User configuration (merged with defaults)
 function M.setup(opts)
-  M._config = opts
+  M._config = opts or {}
 end
 
 ---Get configuration

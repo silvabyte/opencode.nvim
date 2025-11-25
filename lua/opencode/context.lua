@@ -163,18 +163,97 @@ end
 ---@param text string Text to count
 ---@return number tokens Estimated token count
 function M.estimate_tokens(text)
-  -- Rough estimate: 1 token ≈ 4 characters
+  -- Rough estimate: 1 token ≈ 4 characters for code
   return math.ceil(#text / 4)
 end
 
----Truncate context to fit token budget
+---Smart truncate lines to fit token budget
+---@param lines string[] Lines to truncate
+---@param max_tokens number Maximum tokens
+---@param keep_end boolean If true, keep lines from end; if false, from start
+---@return string[] truncated Truncated lines
+function M._truncate_lines(lines, max_tokens, keep_end)
+  local total_tokens = 0
+  local result = {}
+
+  if keep_end then
+    -- Keep lines from the end (for before-cursor context)
+    for i = #lines, 1, -1 do
+      local line_tokens = M.estimate_tokens(lines[i])
+      if total_tokens + line_tokens > max_tokens then
+        break
+      end
+      table.insert(result, 1, lines[i])
+      total_tokens = total_tokens + line_tokens
+    end
+  else
+    -- Keep lines from the start (for after-cursor context)
+    for i = 1, #lines do
+      local line_tokens = M.estimate_tokens(lines[i])
+      if total_tokens + line_tokens > max_tokens then
+        break
+      end
+      table.insert(result, lines[i])
+      total_tokens = total_tokens + line_tokens
+    end
+  end
+
+  return result
+end
+
+---Truncate context to fit token budget with smart prioritization
 ---@param context table Context to truncate
 ---@param max_tokens number Maximum tokens
 ---@return table truncated Truncated context
 function M.truncate_context(context, max_tokens)
-  -- TODO: Implement smart truncation
-  -- For now, just return as-is
-  return context
+  local truncated = vim.deepcopy(context)
+
+  -- Budget allocation (prioritize before-cursor context)
+  local before_budget = math.floor(max_tokens * 0.7) -- 70% for before
+  local after_budget = math.floor(max_tokens * 0.2)  -- 20% for after
+  local current_budget = math.floor(max_tokens * 0.1) -- 10% for current line
+
+  -- Truncate before context (keep most recent lines)
+  if truncated.content_before then
+    truncated.content_before = M._truncate_lines(
+      truncated.content_before,
+      before_budget,
+      true -- keep from end
+    )
+  end
+
+  -- Truncate after context (keep closest lines)
+  if truncated.content_after then
+    truncated.content_after = M._truncate_lines(
+      truncated.content_after,
+      after_budget,
+      false -- keep from start
+    )
+  end
+
+  -- Truncate current line if too long
+  if truncated.current_line and M.estimate_tokens(truncated.current_line) > current_budget then
+    local cursor_col = truncated.cursor_col or 0
+    -- Keep characters around cursor
+    local keep_chars = current_budget * 4
+    local start_pos = math.max(0, cursor_col - math.floor(keep_chars / 2))
+    local end_pos = math.min(#truncated.current_line, cursor_col + math.floor(keep_chars / 2))
+    truncated.current_line = truncated.current_line:sub(start_pos + 1, end_pos)
+    truncated.cursor_col = cursor_col - start_pos
+  end
+
+  return truncated
+end
+
+---Get a compact context summary for better completions
+---@param bufnr number Buffer number
+---@return table context Compact context
+function M.extract_compact(bufnr)
+  local full_context = M.extract(bufnr)
+  local context_config = config.get_context()
+  local max_tokens = context_config.max_tokens or 4000
+
+  return M.truncate_context(full_context, max_tokens)
 end
 
 return M
