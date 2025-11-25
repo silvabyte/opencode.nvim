@@ -9,25 +9,32 @@ AI-powered code completion for Neovim.
 
 ## Install
 
-** & Options
-
 **lazy.nvim**
 
 ```lua
-opts = {
-  completion = {
-    auto_trigger = true,   -- complete as you type
-    debounce = 150,        -- ms to wait
-    accept_key = "<Tab>",
-    dismiss_key = "<C-e>",
-  },
-  model = {
-    provider = "anthropic",
-    model_id = "claude-sonnet-4-20250514",
-    -- or big pickle, big pickle, big pickle!
-    -- provider = "opencode",
-    -- model_id = "big-pickle"
-  },
+-- ~/.config/nvim/lua/plugins/opencode.lua
+
+return {
+  "silvabyte/opencode.nvim",
+  dependencies = { "nvim-lua/plenary.nvim" },
+  event = "InsertEnter",
+  -- Options
+  opts = {
+    completion = {
+      auto_trigger = true,   -- complete as you type
+      debounce = 150,        -- ms to wait
+      accept_key = "<Tab>",
+      dismiss_key = "<C-e>",
+      --etc
+    },
+    model = {
+      provider = "anthropic",
+      model_id = "claude-sonnet-4-20250514",
+      -- or big pickle, big pickle, big pickle!
+      -- provider = "opencode",
+      -- model_id = "big-pickle"
+    },
+  }
 }
 ```
 
