@@ -48,6 +48,18 @@ local recording_frames = { "●", "○" }
 ---@type string[] Animation frames for processing
 local processing_frames = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" }
 
+---@type number|nil SSE job handle for streaming events
+local sse_job = nil
+
+---@type string|nil Current session ID being tracked
+local current_session_id = nil
+
+---@type string[] Event log for displaying in UI
+local event_log = {}
+
+---@type number Max events to keep in log
+local MAX_EVENT_LOG = 5
+
 ---Make HTTP request to Audetic API
 ---@param method string HTTP method
 ---@param path string API path
@@ -96,11 +108,185 @@ local function audetic_request(method, path, body, callback)
   })
 end
 
+---Forward declaration for show_feedback_window (defined later)
+local show_feedback_window
+
+---Stop SSE event stream
+local function stop_sse()
+  if sse_job then
+    pcall(vim.fn.jobstop, sse_job)
+    sse_job = nil
+  end
+  current_session_id = nil
+  event_log = {}
+end
+
+---Add event to log and update UI
+---@param event_text string Event text to display
+local function add_event_to_log(event_text)
+  table.insert(event_log, 1, event_text)
+  if #event_log > MAX_EVENT_LOG then
+    table.remove(event_log)
+  end
+end
+
+---Update the executing UI with event log
+---@param command string The voice command
+local function update_executing_ui(command)
+  local cmd_text = command or "..."
+  if #cmd_text > 35 then
+    cmd_text = cmd_text:sub(1, 32) .. "..."
+  end
+
+  local lines = { 'Heard: "' .. cmd_text .. '"', "" }
+
+  if #event_log > 0 then
+    for _, event in ipairs(event_log) do
+      table.insert(lines, event)
+    end
+  else
+    table.insert(lines, "Waiting for agent...")
+  end
+
+  show_feedback_window("⠋ Executing...", lines, "DiagnosticInfo")
+end
+
+---Parse SSE event data
+---@param line string SSE line
+---@return string|nil event_type, table|nil data
+local function parse_sse_line(line)
+  -- SSE format: "data: {json}" or "event: eventname"
+  if line:match("^data: ") then
+    local json_str = line:sub(7)
+    local data = utils.decode_json(json_str)
+    return "data", data
+  end
+  return nil, nil
+end
+
+---Handle SSE event from OpenCode
+---@param data table Event data
+---@param command string The voice command for UI updates
+local function handle_sse_event(data, command)
+  if not data then
+    return
+  end
+
+  -- Filter events for our session
+  local event_type = data.type
+  local properties = data.properties or {}
+  local session_id = properties.sessionID or properties.session_id
+
+  -- Only process events that match our current session
+  -- Skip if we have a session filter and this event has a different session
+  if current_session_id and session_id and session_id ~= current_session_id then
+    return
+  end
+
+  -- Skip events without a session ID unless it's a server-level event
+  if not session_id and event_type ~= "server.connected" then
+    return
+  end
+
+  utils.debug("SSE event", { type = event_type, data = data })
+
+  -- Handle different event types
+  if event_type == "message.created" then
+    add_event_to_log("Starting...")
+  elseif event_type == "part.created" or event_type == "part.updated" then
+    local part_type = properties.type
+    if part_type == "tool-invocation" then
+      local tool_name = properties.name or properties.toolName or "tool"
+      add_event_to_log("🔧 " .. tool_name)
+    elseif part_type == "text" then
+      local text = properties.text or ""
+      if #text > 40 then
+        text = text:sub(1, 37) .. "..."
+      end
+      if text ~= "" then
+        add_event_to_log("💬 " .. text)
+      end
+    elseif part_type == "reasoning" then
+      add_event_to_log("🤔 Thinking...")
+    elseif part_type == "step-start" then
+      add_event_to_log("▶ Step started")
+    elseif part_type == "step-finish" then
+      add_event_to_log("✓ Step complete")
+    end
+  elseif event_type == "message.completed" then
+    add_event_to_log("✓ Done")
+  elseif event_type == "session.updated" then
+    local summary = properties.summary
+    if summary and summary.files and summary.files > 0 then
+      add_event_to_log(string.format("📝 %d file(s) modified", summary.files))
+    end
+  end
+
+  -- Update the UI
+  vim.schedule(function()
+    if voice_state == "executing" then
+      update_executing_ui(command)
+    end
+  end)
+end
+
+---Start SSE event stream for a session
+---@param session_id string Session ID to track
+---@param command string The voice command for UI context
+local function start_sse(session_id, command)
+  stop_sse()
+
+  current_session_id = session_id
+  event_log = {}
+
+  local server_url = server.get_url()
+  if not server_url then
+    return
+  end
+
+  local sse_url = server_url .. "/event"
+  local cmd = { "curl", "-s", "-N", sse_url }
+
+  utils.debug("Starting SSE", { url = sse_url, session = session_id })
+
+  sse_job = vim.fn.jobstart(cmd, {
+    on_stdout = function(_, data)
+      if data then
+        for _, line in ipairs(data) do
+          if line and line ~= "" then
+            local _, event_data = parse_sse_line(line)
+            if event_data then
+              handle_sse_event(event_data, command)
+            end
+          end
+        end
+      end
+    end,
+    on_stderr = function(_, data)
+      if data then
+        for _, line in ipairs(data) do
+          if line and line ~= "" then
+            utils.debug("SSE stderr", { line = line })
+          end
+        end
+      end
+    end,
+    on_exit = function(_, code)
+      sse_job = nil
+      if code ~= 0 then
+        utils.debug("SSE connection failed", { code = code })
+      else
+        utils.debug("SSE connection closed")
+      end
+    end,
+  })
+end
+
 ---Create or update the feedback floating window
 ---@param title string Window title
 ---@param lines string[] Content lines
 ---@param hl_group? string Highlight group for the title
-local function show_feedback_window(title, lines, hl_group)
+show_feedback_window = function(title, lines, hl_group)
   hl_group = hl_group or "Normal"
 
   -- Calculate dimensions
@@ -267,11 +453,11 @@ local function set_state(new_state, extra_info)
     if #cmd_text > 35 then
       cmd_text = cmd_text:sub(1, 32) .. "..."
     end
+    -- Initial state - will be updated by SSE events
     show_feedback_window("⠋ Executing...", {
       'Heard: "' .. cmd_text .. '"',
       "",
-      "This may take a minute...",
-      "Agent is working on your request",
+      "Waiting for agent...",
     }, "DiagnosticInfo")
     start_animation("executing")
     vim.g.opencode_voice_status = "🤖"
@@ -352,8 +538,14 @@ local function execute_voice_command(transcription)
       return
     end
 
+    -- Start SSE to stream events for this session
+    start_sse(session_id, transcription)
+
     -- Use a longer timeout for voice commands since they run agentically (10 min)
     client.send_message(session_id, prompt, { timeout = 600 }, function(msg_success, result)
+      -- Stop SSE when done
+      stop_sse()
+
       if not msg_success then
         utils.error("Failed to execute voice command: " .. tostring(result))
         set_state("idle")
@@ -498,9 +690,6 @@ function M.toggle()
 
     local current_phase = status.phase
 
-    -- Job options: don't copy to clipboard or auto-paste since we handle the transcription
-    local job_opts = { copy_to_clipboard = false, auto_paste = false }
-
     if current_phase == "recording" then
       -- Currently recording, stop it (no body needed for stop)
       utils.debug("Stopping recording")
@@ -520,6 +709,8 @@ function M.toggle()
       end)
     elseif current_phase == "idle" then
       -- Not recording, start it with job options
+      -- Don't copy to clipboard or auto-paste since we handle the transcription
+      local job_opts = { copy_to_clipboard = false, auto_paste = false }
       utils.debug("Starting recording")
       audetic_request("POST", "/toggle", job_opts, function(toggle_success, toggle_result)
         if toggle_success then
@@ -563,6 +754,7 @@ function M.cancel()
   end
 
   stop_polling()
+  stop_sse()
   set_state("idle")
   utils.info("Voice command cancelled")
 end
