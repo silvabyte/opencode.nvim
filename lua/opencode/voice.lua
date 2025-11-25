@@ -51,12 +51,29 @@ local processing_frames = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "�
 ---Make HTTP request to Audetic API
 ---@param method string HTTP method
 ---@param path string API path
+---@param body? table Optional JSON body
 ---@param callback function Callback(success, result)
-local function audetic_request(method, path, callback)
-  local full_url = AUDETIC_URL .. path
-  local cmd = { "curl", "-s", "-X", method, "--max-time", "5", full_url }
+local function audetic_request(method, path, body, callback)
+  -- Handle optional body parameter
+  if type(body) == "function" then
+    callback = body
+    body = nil
+  end
 
-  utils.debug("Audetic request", { method = method, path = path })
+  local full_url = AUDETIC_URL .. path
+  local cmd = { "curl", "-s", "-X", method, "--max-time", "5" }
+
+  -- Add JSON body if provided
+  if body then
+    table.insert(cmd, "-H")
+    table.insert(cmd, "Content-Type: application/json")
+    table.insert(cmd, "-d")
+    table.insert(cmd, utils.encode_json(body))
+  end
+
+  table.insert(cmd, full_url)
+
+  utils.debug("Audetic request", { method = method, path = path, body = body })
 
   vim.fn.jobstart(cmd, {
     stdout_buffered = true,
@@ -250,11 +267,12 @@ local function set_state(new_state, extra_info)
     if #cmd_text > 35 then
       cmd_text = cmd_text:sub(1, 32) .. "..."
     end
-    show_feedback_window(
-      "⠋ Executing...",
-      { 'Heard: "' .. cmd_text .. '"', "", "Working on it..." },
-      "DiagnosticInfo"
-    )
+    show_feedback_window("⠋ Executing...", {
+      'Heard: "' .. cmd_text .. '"',
+      "",
+      "This may take a minute...",
+      "Agent is working on your request",
+    }, "DiagnosticInfo")
     start_animation("executing")
     vim.g.opencode_voice_status = "🤖"
   end
@@ -334,7 +352,8 @@ local function execute_voice_command(transcription)
       return
     end
 
-    client.send_message(session_id, prompt, {}, function(msg_success, result)
+    -- Use a longer timeout for voice commands since they run agentically (10 min)
+    client.send_message(session_id, prompt, { timeout = 600 }, function(msg_success, result)
       if not msg_success then
         utils.error("Failed to execute voice command: " .. tostring(result))
         set_state("idle")
@@ -342,6 +361,23 @@ local function execute_voice_command(transcription)
       end
 
       utils.debug("Voice command response", { result = result })
+
+      -- Check for API errors in the response
+      local api_error = result and result.info and result.info.error
+      if api_error then
+        local error_msg = api_error.data and api_error.data.message
+          or api_error.name
+          or "Unknown error"
+        vim.schedule(function()
+          show_feedback_window("✗ Error", { error_msg }, "DiagnosticError")
+          utils.error("Voice command failed: " .. error_msg)
+          -- Clear after a delay
+          vim.defer_fn(function()
+            set_state("idle")
+          end, 4000)
+        end)
+        return
+      end
 
       -- Reload the buffer to pick up any changes made by OpenCode
       vim.schedule(function()
@@ -462,8 +498,11 @@ function M.toggle()
 
     local current_phase = status.phase
 
+    -- Job options: don't copy to clipboard or auto-paste since we handle the transcription
+    local job_opts = { copy_to_clipboard = false, auto_paste = false }
+
     if current_phase == "recording" then
-      -- Currently recording, stop it
+      -- Currently recording, stop it (no body needed for stop)
       utils.debug("Stopping recording")
       audetic_request("POST", "/toggle", function(toggle_success, toggle_result)
         if toggle_success then
@@ -480,9 +519,9 @@ function M.toggle()
         end
       end)
     elseif current_phase == "idle" then
-      -- Not recording, start it
+      -- Not recording, start it with job options
       utils.debug("Starting recording")
-      audetic_request("POST", "/toggle", function(toggle_success, toggle_result)
+      audetic_request("POST", "/toggle", job_opts, function(toggle_success, toggle_result)
         if toggle_success then
           utils.debug("Toggle response", toggle_result)
           set_state("recording")
