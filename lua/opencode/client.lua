@@ -35,8 +35,8 @@ function M.request(method, path, body, callback)
 
   local full_url = url .. path
 
-  -- Build curl command
-  local cmd = { "curl", "-s", "-X", method }
+  -- Build curl command with timeout
+  local cmd = { "curl", "-s", "-X", method, "--max-time", "30" }
 
   -- Always add JSON headers
   table.insert(cmd, "-H")
@@ -53,21 +53,63 @@ function M.request(method, path, body, callback)
 
   utils.debug("HTTP request", { method = method, path = path, url = full_url })
 
+  -- Track state for this request
+  local stdout_data = {}
+  local stderr_data = {}
+  local callback_called = false
+
+  local function safe_callback(success, result)
+    if callback_called then
+      return
+    end
+    callback_called = true
+    callback(success, result)
+  end
+
   -- Execute request
   vim.fn.jobstart(cmd, {
     stdout_buffered = true,
+    stderr_buffered = true,
     on_stdout = function(_, data)
-      if not data or #data == 0 then
-        callback(false, "Empty response")
+      if data then
+        for _, line in ipairs(data) do
+          if line ~= "" then
+            table.insert(stdout_data, line)
+          end
+        end
+      end
+    end,
+    on_stderr = function(_, data)
+      if data then
+        for _, line in ipairs(data) do
+          if line ~= "" then
+            table.insert(stderr_data, line)
+          end
+        end
+      end
+    end,
+    on_exit = function(_, code)
+      -- Process response on exit to ensure we have all data
+      if code ~= 0 then
+        local err_msg = #stderr_data > 0 and table.concat(stderr_data, "\n")
+          or ("Request failed with code " .. code)
+        utils.debug("Request failed", { code = code, stderr = err_msg })
+        safe_callback(false, err_msg)
         return
       end
 
-      local response = table.concat(data, "\n")
+      if #stdout_data == 0 then
+        utils.debug("Empty response from server")
+        safe_callback(false, "Empty response from server")
+        return
+      end
+
+      local response = table.concat(stdout_data, "\n")
 
       -- Check if response looks like HTML (error page)
       if response:match("^%s*<!") or response:match("<html") then
         utils.error("Received HTML instead of JSON")
-        callback(false, "Server returned HTML error page")
+        safe_callback(false, "Server returned HTML error page")
         return
       end
 
@@ -75,24 +117,11 @@ function M.request(method, path, body, callback)
 
       if decoded then
         utils.debug("API response", { decoded = decoded })
-        callback(true, decoded)
+        safe_callback(true, decoded)
       else
         utils.error("Failed to parse JSON response")
         utils.debug("Raw response", { response = response:sub(1, 500) })
-        callback(false, "Failed to parse response: " .. response:sub(1, 200))
-      end
-    end,
-    on_stderr = function(_, data)
-      if data and #data > 0 then
-        local err = table.concat(data, "\n")
-        if err ~= "" then
-          utils.debug("Request stderr", { error = err })
-        end
-      end
-    end,
-    on_exit = function(_, code)
-      if code ~= 0 then
-        utils.warn("Request exited with code: " .. code)
+        safe_callback(false, "Failed to parse response: " .. response:sub(1, 200))
       end
     end,
   })
