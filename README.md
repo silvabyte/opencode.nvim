@@ -9,35 +9,9 @@ AI-powered code completion for Neovim.
 
 ## Install
 
+** & Options
+
 **lazy.nvim**
-
-```lua
-{
-  "smat/opencode.nvim",
-  dependencies = { "nvim-lua/plenary.nvim" },
-  event = "InsertEnter",
-  opts = {
-    completion = {
-      auto_trigger = true,
-      debounce = 150,
-    },
-  },
-}
-```
-
-Run `:checkhealth opencode` to verify.
-
-## Keys
-
-| Key | Action |
-|-----|--------|
-| `<C-]>` | Trigger completion |
-| `<Tab>` | Accept all |
-| `<C-l>` | Accept line |
-| `<C-Right>` | Accept word |
-| `<C-e>` | Dismiss |
-
-## Options
 
 ```lua
 opts = {
@@ -56,6 +30,18 @@ opts = {
   },
 }
 ```
+
+Run `:checkhealth opencode` to verify.
+
+## Keys
+
+| Key | Action |
+|-----|--------|
+| `<C-]>` | Trigger completion |
+| `<Tab>` | Accept all |
+| `<C-l>` | Accept line |
+| `<C-Right>` | Accept word |
+| `<C-e>` | Dismiss |
 
 ## Commands
 
