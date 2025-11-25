@@ -46,14 +46,15 @@ function M.start(opts)
 
   -- Start embedded server
   local port = server_config.port or 4096
-  local cmd = { "opencode", "serve", "--port=" .. port }
+  local cwd = vim.fn.getcwd()
 
-  utils.debug("Starting OpenCode server", { cmd = cmd })
+  utils.debug("Starting OpenCode server", { port = port, cwd = cwd })
 
   -- Start server process
   local handle, pid
   handle, pid = vim.loop.spawn("opencode", {
     args = { "serve", "--port=" .. port },
+    cwd = cwd,
     stdio = { nil, nil, nil },
     detached = true,
   }, function(code, signal)

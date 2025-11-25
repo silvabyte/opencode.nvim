@@ -59,31 +59,38 @@ function M.accept()
     return false
   end
 
+  -- Capture state before scheduling
+  local suggestion = current_suggestion
   local bufnr = current_bufnr or vim.api.nvim_get_current_buf()
-  local row, col = utils.get_cursor_position(bufnr)
 
-  -- Split text into lines
-  local text = current_suggestion.text
-  local lines = vim.split(text, "\n", { plain = true })
-
-  -- Insert the completion
-  if #lines == 1 then
-    -- Single line: insert at cursor
-    vim.api.nvim_buf_set_text(bufnr, row, col, row, col, lines)
-    -- Move cursor to end
-    vim.api.nvim_win_set_cursor(0, { row + 1, col + #lines[1] })
-  else
-    -- Multi-line: insert as multiple lines
-    vim.api.nvim_buf_set_text(bufnr, row, col, row, col, lines)
-    -- Move cursor to end of last line
-    vim.api.nvim_win_set_cursor(0, { row + #lines, #lines[#lines] })
-  end
-
-  -- Clear suggestion UI
+  -- Clear state immediately
+  current_suggestion = nil
   M.dismiss()
 
-  -- Silent - just debug logging
-  utils.debug("Accepted suggestion", { lines = #lines })
+  -- Schedule the actual insertion to avoid E565 when called from other plugin contexts
+  vim.schedule(function()
+    local row, col = utils.get_cursor_position(bufnr)
+
+    -- Split text into lines
+    local text = suggestion.text
+    local lines = vim.split(text, "\n", { plain = true })
+
+    -- Insert the completion
+    if #lines == 1 then
+      -- Single line: insert at cursor
+      vim.api.nvim_buf_set_text(bufnr, row, col, row, col, lines)
+      -- Move cursor to end
+      vim.api.nvim_win_set_cursor(0, { row + 1, col + #lines[1] })
+    else
+      -- Multi-line: insert as multiple lines
+      vim.api.nvim_buf_set_text(bufnr, row, col, row, col, lines)
+      -- Move cursor to end of last line
+      vim.api.nvim_win_set_cursor(0, { row + #lines, #lines[#lines] })
+    end
+
+    utils.debug("Accepted suggestion", { lines = #lines })
+  end)
+
   return true
 end
 
@@ -102,20 +109,28 @@ function M.accept_word()
   end
 
   local bufnr = current_bufnr or vim.api.nvim_get_current_buf()
-  local row, col = utils.get_cursor_position(bufnr)
-
-  -- Insert just the word
-  vim.api.nvim_buf_set_text(bufnr, row, col, row, col, { word })
-  vim.api.nvim_win_set_cursor(0, { row + 1, col + #word })
-
-  -- Update remaining suggestion
   local remaining = text:sub(#word + 1)
+
+  -- Update state
   if remaining and remaining ~= "" and not remaining:match("^%s*$") then
     current_suggestion.text = remaining
-    M._show_inline_suggestion(bufnr, row, col + #word, remaining)
   else
-    M.dismiss()
+    current_suggestion = nil
   end
+
+  -- Schedule text insertion
+  vim.schedule(function()
+    local row, col = utils.get_cursor_position(bufnr)
+    vim.api.nvim_buf_set_text(bufnr, row, col, row, col, { word })
+    vim.api.nvim_win_set_cursor(0, { row + 1, col + #word })
+
+    -- Show remaining or dismiss
+    if current_suggestion then
+      M._show_inline_suggestion(bufnr, row, col + #word, current_suggestion.text)
+    else
+      M.dismiss()
+    end
+  end)
 
   return true
 end
@@ -135,25 +150,32 @@ function M.accept_line()
 
   local first_line = lines[1]
   local bufnr = current_bufnr or vim.api.nvim_get_current_buf()
-  local row, col = utils.get_cursor_position(bufnr)
 
-  -- Insert first line
-  vim.api.nvim_buf_set_text(bufnr, row, col, row, col, { first_line })
-  vim.api.nvim_win_set_cursor(0, { row + 1, col + #first_line })
-
-  -- Update remaining suggestion if there are more lines
+  -- Update state
   if #lines > 1 then
     local remaining = table.concat(vim.list_slice(lines, 2), "\n")
     if remaining and remaining ~= "" then
       current_suggestion.text = remaining
-      -- Show on next line at col 0
-      M._show_inline_suggestion(bufnr, row + 1, 0, remaining)
+    else
+      current_suggestion = nil
+    end
+  else
+    current_suggestion = nil
+  end
+
+  -- Schedule text insertion
+  vim.schedule(function()
+    local row, col = utils.get_cursor_position(bufnr)
+    vim.api.nvim_buf_set_text(bufnr, row, col, row, col, { first_line })
+    vim.api.nvim_win_set_cursor(0, { row + 1, col + #first_line })
+
+    -- Show remaining or dismiss
+    if current_suggestion then
+      M._show_inline_suggestion(bufnr, row + 1, 0, current_suggestion.text)
     else
       M.dismiss()
     end
-  else
-    M.dismiss()
-  end
+  end)
 
   return true
 end
