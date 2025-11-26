@@ -2,6 +2,12 @@
 
 AI-powered code completion for Neovim.
 
+Problem: Supermaven is dead. They killed it. Those bastards.
+
+Solution: This pile of vibes... but it works! and so can you!
+
+👆The best sales pitch of all time?
+
 ## Requirements
 
 - Neovim >= 0.9
