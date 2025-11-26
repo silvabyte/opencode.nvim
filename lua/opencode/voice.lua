@@ -60,6 +60,18 @@ local event_log = {}
 ---@type number Max events to keep in log (only showing latest)
 local MAX_EVENT_LOG = 1
 
+---@type number Fixed width for feedback window (prevents resize jank)
+local FEEDBACK_WINDOW_WIDTH = 45
+
+---@type number|nil Throttle timer for UI updates
+local ui_update_timer = nil
+
+---@type boolean Whether a UI update is pending
+local ui_update_pending = false
+
+---@type number Minimum ms between UI updates (throttle)
+local UI_UPDATE_THROTTLE_MS = 100
+
 ---Make HTTP request to Audetic API
 ---@param method string HTTP method
 ---@param path string API path
@@ -111,6 +123,9 @@ end
 ---Forward declaration for show_feedback_window (defined later)
 local show_feedback_window
 
+---Forward declaration for stop_ui_update_timer (defined later)
+local stop_ui_update_timer
+
 ---Stop SSE event stream
 local function stop_sse()
   if sse_job then
@@ -119,6 +134,10 @@ local function stop_sse()
   end
   current_session_id = nil
   event_log = {}
+  -- Stop UI throttle timer when SSE stops
+  if stop_ui_update_timer then
+    stop_ui_update_timer()
+  end
 end
 
 ---Add event to log and update UI
@@ -132,19 +151,65 @@ local function add_event_to_log(event_text)
   end
 end
 
----Update the executing UI with event log
+---Update the executing UI with event log (internal, called by throttled version)
 ---@param command string The voice command
-local function update_executing_ui(command)
+local function _do_update_executing_ui(command)
   local cmd_text = command or "..."
   if #cmd_text > 35 then
     cmd_text = cmd_text:sub(1, 32) .. "..."
   end
 
-  -- Show latest event as the title, command below
+  -- Show latest event as the status, command as context
   local status = event_log[1] or "Waiting for agent..."
   local lines = { 'Heard: "' .. cmd_text .. '"' }
 
   show_feedback_window("⠋ " .. status, lines, "DiagnosticInfo")
+end
+
+---Throttled UI update to prevent rapid flashing
+---@param command string The voice command
+local function update_executing_ui(command)
+  -- Mark that an update is pending
+  ui_update_pending = true
+
+  -- If timer is already running, let it handle the update
+  if ui_update_timer then
+    return
+  end
+
+  -- Execute immediately for the first update
+  _do_update_executing_ui(command)
+  ui_update_pending = false
+
+  -- Start throttle timer to batch subsequent rapid updates
+  ui_update_timer = vim.loop.new_timer()
+  ui_update_timer:start(
+    UI_UPDATE_THROTTLE_MS,
+    UI_UPDATE_THROTTLE_MS,
+    vim.schedule_wrap(function()
+      if ui_update_pending then
+        _do_update_executing_ui(command)
+        ui_update_pending = false
+      else
+        -- No pending updates, stop the timer
+        if ui_update_timer then
+          ui_update_timer:stop()
+          ui_update_timer:close()
+          ui_update_timer = nil
+        end
+      end
+    end)
+  )
+end
+
+---Stop the UI update throttle timer
+stop_ui_update_timer = function()
+  if ui_update_timer then
+    ui_update_timer:stop()
+    ui_update_timer:close()
+    ui_update_timer = nil
+  end
+  ui_update_pending = false
 end
 
 ---Parse SSE event data
@@ -324,6 +389,22 @@ local function start_sse(session_id, command)
   })
 end
 
+---Truncate or pad a string to a fixed width
+---@param str string Input string
+---@param width number Target width
+---@return string result
+local function fit_to_width(str, width)
+  local len = vim.fn.strdisplaywidth(str)
+  if len > width then
+    -- Truncate with ellipsis
+    return vim.fn.strcharpart(str, 0, width - 1) .. "…"
+  elseif len < width then
+    -- Pad with spaces
+    return str .. string.rep(" ", width - len)
+  end
+  return str
+end
+
 ---Create or update the feedback floating window
 ---@param title string Window title
 ---@param lines string[] Content lines
@@ -331,21 +412,21 @@ end
 show_feedback_window = function(title, lines, hl_group)
   hl_group = hl_group or "Normal"
 
-  -- Calculate dimensions
-  local width = 40
-  local height = #lines + 2
+  -- Use fixed dimensions to prevent resize jank
+  local width = FEEDBACK_WINDOW_WIDTH
+  local height = 5 -- Fixed height: title + separator + 3 content lines
 
-  -- Ensure minimum dimensions
-  width = math.max(width, #title + 4)
-  for _, line in ipairs(lines) do
-    width = math.max(width, #line + 4)
-  end
-  width = math.min(width, 60)
+  -- Build content with fixed-width lines (prevents layout shift)
+  local content_width = width - 2 -- Account for padding
+  local content = {
+    " " .. fit_to_width(title, content_width - 1),
+    string.rep("─", width - 2),
+  }
 
-  -- Build content with border padding
-  local content = { " " .. title, string.rep("─", width - 2) }
-  for _, line in ipairs(lines) do
-    table.insert(content, " " .. line)
+  -- Add content lines, ensuring we always have exactly 3 lines
+  for i = 1, 3 do
+    local line = lines[i] or ""
+    table.insert(content, " " .. fit_to_width(line, content_width - 1))
   end
 
   -- Create buffer if needed
@@ -365,11 +446,11 @@ show_feedback_window = function(title, lines, hl_group)
   vim.api.nvim_buf_add_highlight(feedback_buf, ns, "Comment", 1, 0, -1)
 
   -- Calculate position (top right)
-  local ui = vim.api.nvim_list_uis()[1]
+  local ui_info = vim.api.nvim_list_uis()[1]
   local row = 1
-  local col = ui.width - width - 2
+  local col = ui_info.width - width - 2
 
-  -- Create or update window
+  -- Create or update window (only create once, never resize)
   if not feedback_win or not vim.api.nvim_win_is_valid(feedback_win) then
     feedback_win = vim.api.nvim_open_win(feedback_buf, false, {
       relative = "editor",
@@ -384,20 +465,16 @@ show_feedback_window = function(title, lines, hl_group)
     })
     -- Set window options
     vim.api.nvim_set_option_value("winblend", 10, { win = feedback_win })
-  else
-    -- Update existing window
-    vim.api.nvim_win_set_config(feedback_win, {
-      relative = "editor",
-      row = row,
-      col = col,
-      width = width,
-      height = height,
-    })
   end
+  -- Note: We intentionally don't call nvim_win_set_config on updates
+  -- to prevent window resize/position jank. Content updates only.
 end
 
 ---Close the feedback window
 local function close_feedback_window()
+  -- Stop UI update throttle timer
+  stop_ui_update_timer()
+
   if animation_timer then
     animation_timer:stop()
     animation_timer:close()

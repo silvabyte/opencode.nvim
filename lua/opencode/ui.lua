@@ -10,10 +10,13 @@ local ns_id = nil
 ---@type number|nil Loading timer for animated indicator
 local loading_timer = nil
 
+---@type number|nil Delay timer before showing loading indicator
+local loading_delay_timer = nil
+
 ---@type number Loading animation frame
 local loading_frame = 0
 
----@type string[] Loading animation frames
+---@type string[] Loading animation frames (compact spinner)
 local loading_frames = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" }
 
 ---@type number|nil Current loading extmark ID
@@ -21,6 +24,12 @@ local loading_extmark = nil
 
 ---@type number|nil Buffer where loading indicator is shown
 local loading_bufnr = nil
+
+---@type number|nil Row where loading indicator is shown
+local loading_row = nil
+
+---@type boolean Whether loading indicator is currently visible
+local loading_visible = false
 
 ---Initialize namespace
 local function ensure_namespace()
@@ -90,31 +99,19 @@ function M.hide_inline_completion(bufnr)
   vim.api.nvim_buf_clear_namespace(bufnr, ns_id, 0, -1)
 end
 
----Show loading indicator as animated inline virtual text
----@param bufnr? number Buffer number
----@param row? number Row (0-indexed)
----@param col? number Column (0-indexed)
-function M.show_loading(bufnr, row, col)
-  ensure_namespace()
-
-  bufnr = bufnr or vim.api.nvim_get_current_buf()
-
-  if row == nil or col == nil then
-    local cursor = vim.api.nvim_win_get_cursor(0)
-    row = cursor[1] - 1
-    col = cursor[2]
-  end
-
-  loading_bufnr = bufnr
+---Start the actual loading animation (called after delay)
+---@param bufnr number Buffer number
+---@param row number Row (0-indexed)
+---@param indicator_mode string Loading indicator mode
+local function start_loading_animation(bufnr, row, indicator_mode)
+  loading_visible = true
   loading_frame = 0
 
-  -- Start animation timer
-  if loading_timer then
-    loading_timer:stop()
-    loading_timer:close()
-  end
-
   local function update_loading()
+    if not loading_visible then
+      return
+    end
+
     if not vim.api.nvim_buf_is_valid(bufnr) then
       M.hide_loading()
       return
@@ -123,49 +120,143 @@ function M.show_loading(bufnr, row, col)
     loading_frame = (loading_frame % #loading_frames) + 1
     local spinner = loading_frames[loading_frame]
 
-    -- Clear previous extmark
-    if loading_extmark then
-      pcall(vim.api.nvim_buf_del_extmark, bufnr, ns_id, loading_extmark)
-    end
+    if indicator_mode == "eol" then
+      -- Clear previous extmark
+      if loading_extmark then
+        pcall(vim.api.nvim_buf_del_extmark, bufnr, ns_id, loading_extmark)
+      end
 
-    -- Set new extmark with spinner
-    local ok, extmark = pcall(vim.api.nvim_buf_set_extmark, bufnr, ns_id, row, col, {
-      virt_text = { { " " .. spinner .. " thinking...", "Comment" } },
-      virt_text_pos = "overlay",
-      hl_mode = "combine",
-      priority = 100,
-    })
+      -- Set new extmark at end of line (non-intrusive)
+      local ok, extmark = pcall(vim.api.nvim_buf_set_extmark, bufnr, ns_id, row, 0, {
+        virt_text = { { " " .. spinner, "OpenCodeLoading" } },
+        virt_text_pos = "eol",
+        hl_mode = "combine",
+        priority = 50, -- Lower priority so it doesn't conflict with other plugins
+      })
 
-    if ok then
-      loading_extmark = extmark
+      if ok then
+        loading_extmark = extmark
+      end
+    elseif indicator_mode == "statusline" then
+      -- Update statusline with spinner
+      vim.g.opencode_loading = spinner
+      -- Force statusline redraw
+      vim.cmd("redrawstatus")
     end
+    -- "none" mode: do nothing visible
   end
 
   -- Initial show
   update_loading()
 
-  -- Create timer for animation
+  -- Create timer for animation (slightly slower for less distraction)
   loading_timer = vim.loop.new_timer()
-  loading_timer:start(0, 80, vim.schedule_wrap(update_loading))
+  loading_timer:start(0, 100, vim.schedule_wrap(update_loading))
 end
 
----Hide loading indicator
-function M.hide_loading()
+---Show loading indicator (with optional delay to avoid flicker)
+---@param bufnr? number Buffer number
+---@param row? number Row (0-indexed)
+---@param col? number Column (0-indexed, unused but kept for API compatibility)
+function M.show_loading(bufnr, row, col)
+  ensure_namespace()
+
+  local ui_config = config.get_ui()
+  local indicator_mode = ui_config.loading_indicator or "eol"
+  local delay = ui_config.loading_delay or 100
+
+  -- If mode is "none", don't show anything
+  if indicator_mode == "none" then
+    return
+  end
+
+  bufnr = bufnr or vim.api.nvim_get_current_buf()
+
+  if row == nil then
+    local cursor = vim.api.nvim_win_get_cursor(0)
+    row = cursor[1] - 1
+  end
+
+  -- Store state
+  loading_bufnr = bufnr
+  loading_row = row
+
+  -- Cancel any existing delay timer
+  if loading_delay_timer then
+    loading_delay_timer:stop()
+    loading_delay_timer:close()
+    loading_delay_timer = nil
+  end
+
+  -- Cancel any existing animation timer
   if loading_timer then
     loading_timer:stop()
     loading_timer:close()
     loading_timer = nil
   end
 
+  -- Clear any existing loading indicator
+  if loading_extmark then
+    pcall(vim.api.nvim_buf_del_extmark, bufnr, ns_id, loading_extmark)
+    loading_extmark = nil
+  end
+
+  -- If delay is 0 or less, show immediately
+  if delay <= 0 then
+    start_loading_animation(bufnr, row, indicator_mode)
+    return
+  end
+
+  -- Start delay timer before showing loading indicator
+  loading_delay_timer = vim.loop.new_timer()
+  loading_delay_timer:start(
+    delay,
+    0,
+    vim.schedule_wrap(function()
+      loading_delay_timer = nil
+      -- Only show if we haven't been cancelled
+      if loading_bufnr == bufnr then
+        start_loading_animation(bufnr, row, indicator_mode)
+      end
+    end)
+  )
+end
+
+---Hide loading indicator
+function M.hide_loading()
+  loading_visible = false
+
+  -- Cancel delay timer if pending
+  if loading_delay_timer then
+    loading_delay_timer:stop()
+    loading_delay_timer:close()
+    loading_delay_timer = nil
+  end
+
+  -- Stop animation timer
+  if loading_timer then
+    loading_timer:stop()
+    loading_timer:close()
+    loading_timer = nil
+  end
+
+  -- Clear extmark
   if loading_bufnr and loading_extmark then
     pcall(vim.api.nvim_buf_del_extmark, loading_bufnr, ns_id, loading_extmark)
   end
 
   loading_extmark = nil
   loading_bufnr = nil
+  loading_row = nil
 
-  -- Clear echo area too
-  vim.api.nvim_echo({ { "", "Normal" } }, false, {})
+  -- Clear statusline loading indicator
+  vim.g.opencode_loading = nil
+end
+
+---Check if loading indicator is active
+---@return boolean
+function M.is_loading()
+  return loading_visible or loading_delay_timer ~= nil
 end
 
 ---Show suggestion in floating window
@@ -238,6 +329,11 @@ end
 ---Get statusline component
 ---@return string status
 function M.get_statusline()
+  -- Show loading spinner if active (when using statusline mode)
+  local loading = vim.g.opencode_loading
+  if loading then
+    return loading .. " "
+  end
   return vim.g.opencode_status or ""
 end
 

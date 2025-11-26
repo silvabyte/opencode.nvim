@@ -45,6 +45,8 @@
 ---@field inline_hl_group? string Highlight group for inline text
 ---@field suggestion_border? string Border style for windows
 ---@field statusline? boolean Show in statusline
+---@field loading_indicator? string Loading indicator style: "eol" (end of line), "statusline", "none"
+---@field loading_delay? number Delay in ms before showing loading indicator (to avoid flicker)
 
 ---@class OpenCodeVoiceConfig
 ---@field enabled? boolean Enable voice commands

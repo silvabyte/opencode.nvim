@@ -43,6 +43,8 @@ local default_config = {
     inline_hl_group = "Comment",
     suggestion_border = "rounded",
     statusline = true,
+    loading_indicator = "eol", -- "eol" (end of line), "statusline", "none"
+    loading_delay = 100, -- ms delay before showing loading indicator (avoids flicker)
   },
   voice = {
     enabled = true,
