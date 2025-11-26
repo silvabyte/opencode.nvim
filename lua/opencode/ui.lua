@@ -25,8 +25,8 @@ local loading_extmark = nil
 ---@type number|nil Buffer where loading indicator is shown
 local loading_bufnr = nil
 
----@type number|nil Row where loading indicator is shown
-local loading_row = nil
+---@type number|nil Row where loading indicator is shown (reserved for future use)
+local _loading_row = nil
 
 ---@type boolean Whether loading indicator is currently visible
 local loading_visible = false
@@ -157,8 +157,8 @@ end
 ---Show loading indicator (with optional delay to avoid flicker)
 ---@param bufnr? number Buffer number
 ---@param row? number Row (0-indexed)
----@param col? number Column (0-indexed, unused but kept for API compatibility)
-function M.show_loading(bufnr, row, col)
+---@param _col? number Column (0-indexed, unused but kept for API compatibility)
+function M.show_loading(bufnr, row, _col)
   ensure_namespace()
 
   local ui_config = config.get_ui()
@@ -179,7 +179,7 @@ function M.show_loading(bufnr, row, col)
 
   -- Store state
   loading_bufnr = bufnr
-  loading_row = row
+  _loading_row = row
 
   -- Cancel any existing delay timer
   if loading_delay_timer then
@@ -247,7 +247,7 @@ function M.hide_loading()
 
   loading_extmark = nil
   loading_bufnr = nil
-  loading_row = nil
+  _loading_row = nil
 
   -- Clear statusline loading indicator
   vim.g.opencode_loading = nil

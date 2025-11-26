@@ -11,7 +11,7 @@
 
 ---@class OpenCodeServerConfig
 ---@field url? string Server URL (nil = auto-start)
----@field port? number Server port
+---@field port? number Server port (nil = auto-allocate free port)
 ---@field auto_start? boolean Auto-start server
 ---@field timeout? number Request timeout in ms
 

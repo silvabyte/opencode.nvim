@@ -41,10 +41,24 @@ M.check = function()
     vim.health.warn("plenary.nvim not found (optional)")
   end
 
+  -- Check port allocation capability
+  local port_ok, port_utils = pcall(require, "opencode.port")
+  if port_ok then
+    local test_port = port_utils.find_free_port()
+    if test_port then
+      vim.health.ok("Port allocation working (tested port: " .. test_port .. ")")
+    else
+      vim.health.error("Port allocation failed - cannot bind to TCP socket")
+    end
+  else
+    vim.health.error("Port module not found")
+  end
+
   -- Check server status
   local ok, server = pcall(require, "opencode.server")
   if ok and server.is_running and server.is_running() then
-    vim.health.ok("OpenCode server running")
+    local url = server.get_url and server.get_url() or "unknown"
+    vim.health.ok("OpenCode server running at " .. url)
   else
     vim.health.info("OpenCode server not running (starts on first use)")
   end

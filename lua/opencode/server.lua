@@ -4,6 +4,7 @@ local M = {}
 
 local config = require("opencode.config")
 local utils = require("opencode.utils")
+local port_utils = require("opencode.port")
 
 ---@type number? Server process handle
 local server_handle = nil
@@ -45,7 +46,17 @@ function M.start(opts)
   end
 
   -- Start embedded server
-  local port = server_config.port or 4096
+  -- Use configured port, or dynamically allocate a free one
+  local port = server_config.port
+  if not port then
+    port = port_utils.find_free_port()
+    if not port then
+      utils.error("Failed to allocate a free port for OpenCode server")
+      return false
+    end
+    utils.debug("Dynamically allocated port", { port = port })
+  end
+
   local cwd = vim.fn.getcwd()
 
   utils.debug("Starting OpenCode server", { port = port, cwd = cwd })

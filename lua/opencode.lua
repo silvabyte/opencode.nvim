@@ -9,7 +9,7 @@ local M = {}
 local default_config = {
   server = {
     url = nil,
-    port = 4096,
+    port = nil, -- nil = auto-allocate free port (enables multiple Neovim instances)
     auto_start = true,
     timeout = 15000, -- Reduced timeout for faster failure detection
   },
