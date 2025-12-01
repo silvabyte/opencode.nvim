@@ -89,7 +89,9 @@ function M.start(opts)
   -- Wait for server to be ready
   vim.defer_fn(function()
     if M.health_check() then
-      utils.info("Server started successfully")
+      local model_config = config.get_model()
+      local model_info = model_config.model_id or "unknown"
+      utils.info("Server started successfully (model: " .. model_info .. ")")
     else
       utils.warn("Server may not be ready yet. Check with :OpenCodeStatus")
     end
