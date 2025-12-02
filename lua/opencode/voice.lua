@@ -21,8 +21,8 @@ local poll_timer = nil
 ---@type number Poll interval in milliseconds
 local POLL_INTERVAL = 200
 
----@type number Max poll attempts (10 seconds)
-local MAX_POLL_ATTEMPTS = 50
+---@type number Max poll attempts (5 minutes)
+local MAX_POLL_ATTEMPTS = 1500
 
 ---@type number Current poll attempt count
 local poll_attempts = 0

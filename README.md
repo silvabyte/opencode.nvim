@@ -12,6 +12,7 @@ Solution: This pile of vibes... but it works! and so can you!
 
 - Neovim >= 0.9
 - [OpenCode CLI](https://opencode.ai)
+- (optional) [Audetic](https://github.com/silvabyte/Audetic)
 
 ## Install
 
