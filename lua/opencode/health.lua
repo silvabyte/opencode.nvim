@@ -12,10 +12,10 @@ M.check = function()
 
   -- Check for opencode CLI
   if vim.fn.executable("opencode") == 1 then
-    local handle = io.popen("opencode --version 2>/dev/null")
-    local version = handle and handle:read("*a") or "unknown"
-    if handle then
-      handle:close()
+    -- Use vim.fn.system instead of io.popen to avoid blocking
+    local version = vim.fn.system("opencode --version 2>/dev/null")
+    if vim.v.shell_error ~= 0 then
+      version = "unknown"
     end
     vim.health.ok("opencode CLI found: " .. vim.trim(version))
   else
@@ -54,7 +54,7 @@ M.check = function()
     vim.health.error("Port module not found")
   end
 
-  -- Check server status
+  -- Check server status (uses cached state, non-blocking)
   local ok, server = pcall(require, "opencode.server")
   if ok and server.is_running and server.is_running() then
     local url = server.get_url and server.get_url() or "unknown"

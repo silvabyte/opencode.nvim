@@ -28,25 +28,64 @@ function M.find_free_port()
   return nil
 end
 
----Find a free port with retry logic
+---Find a free port with retry logic (synchronous, immediate)
 ---If the first attempt fails, retry up to max_attempts times
 ---@param max_attempts? number Maximum attempts (default: 3)
 ---@return number|nil port The allocated port, or nil on failure
 function M.find_free_port_with_retry(max_attempts)
   max_attempts = max_attempts or 3
 
-  for attempt = 1, max_attempts do
+  for _ = 1, max_attempts do
     local port = M.find_free_port()
     if port then
       return port
     end
-    -- Small delay between retries
-    if attempt < max_attempts then
-      vim.loop.sleep(10)
-    end
+    -- No delay - immediate retry since find_free_port is instant
   end
 
   return nil
+end
+
+---Find a free port with retry logic (async version with timer-based delay)
+---@param callback function Callback(port: number|nil)
+---@param max_attempts? number Maximum attempts (default: 3)
+---@param delay_ms? number Delay between retries in ms (default: 10)
+function M.find_free_port_with_retry_async(callback, max_attempts, delay_ms)
+  max_attempts = max_attempts or 3
+  delay_ms = delay_ms or 10
+
+  local attempt = 1
+
+  local function try_find()
+    local port = M.find_free_port()
+    if port then
+      callback(port)
+      return
+    end
+
+    attempt = attempt + 1
+    if attempt <= max_attempts then
+      -- using timer instead of vim.sleep since sleep is blocking operation
+      local timer = vim.loop.new_timer()
+      if timer then
+        timer:start(
+          delay_ms,
+          0,
+          vim.schedule_wrap(function()
+            timer:close()
+            try_find()
+          end)
+        )
+      else
+        -- Timer creation failed, give up to avoid potential issues
+        callback(nil)
+      end
+    else
+      callback(nil)
+    end
+  end
+
+  try_find()
 end
 
 ---Check if a port is available by attempting to bind to it

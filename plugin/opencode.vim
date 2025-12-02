@@ -26,10 +26,6 @@ command! OpenCodeDismiss lua require('opencode').dismiss_suggestion()
 command! OpenCodeClearCache lua require('opencode').clear_cache()
 command! OpenCodeReset lua require('opencode').reset()
 
-" Legacy command aliases for backwards compatibility
-command! OpenCodeAcceptSuggestion lua require('opencode').accept_suggestion()
-command! OpenCodeDismissSuggestion lua require('opencode').dismiss_suggestion()
-
 " Default keymaps (can be disabled with g:opencode_disable_default_keymaps)
 " Note: Most keymaps are now set up in the completion module for better integration
 if !exists('g:opencode_disable_default_keymaps') || !g:opencode_disable_default_keymaps
