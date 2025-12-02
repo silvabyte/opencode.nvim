@@ -252,6 +252,66 @@ function M.format_timestamp(timestamp)
   return os.date("%Y-%m-%d %H:%M:%S", timestamp)
 end
 
+---Execute curl command asynchronously
+---@param args string[] Curl arguments (excluding 'curl' itself)
+---@param callback function Callback(success: boolean, output: string)
+---@param opts? {timeout?: number} Options (default timeout: 5s)
+function M.async_curl(args, callback, opts)
+  opts = opts or {}
+  local timeout = opts.timeout or 5
+
+  -- Build command with curl and timeout
+  local cmd = { "curl", "-s", "--max-time", tostring(timeout) }
+  for _, arg in ipairs(args) do
+    table.insert(cmd, arg)
+  end
+
+  local stdout_data = {}
+  local stderr_data = {}
+
+  local job_id = vim.fn.jobstart(cmd, {
+    stdout_buffered = true,
+    stderr_buffered = true,
+    on_stdout = function(_, data)
+      if data then
+        for _, line in ipairs(data) do
+          if line ~= "" then
+            table.insert(stdout_data, line)
+          end
+        end
+      end
+    end,
+    on_stderr = function(_, data)
+      if data then
+        for _, line in ipairs(data) do
+          if line ~= "" then
+            table.insert(stderr_data, line)
+          end
+        end
+      end
+    end,
+    on_exit = function(_, code)
+      vim.schedule(function()
+        if code ~= 0 then
+          local err_msg = #stderr_data > 0 and table.concat(stderr_data, "\n")
+            or ("curl failed with code " .. code)
+          callback(false, err_msg)
+        else
+          local output = table.concat(stdout_data, "\n")
+          callback(true, output)
+        end
+      end)
+    end,
+  })
+
+  -- Handle jobstart failures: -1 = command not found, 0 = invalid args
+  if job_id <= 0 then
+    vim.schedule(function()
+      callback(false, "Failed to start curl process (job_id: " .. job_id .. ")")
+    end)
+  end
+end
+
 ---Sleep for specified milliseconds (async)
 ---@param ms number Milliseconds
 ---@param callback function Callback to run after sleep

@@ -162,13 +162,23 @@ function M.get_config()
   return M.config
 end
 
----Check if OpenCode is available
+---Check if OpenCode is available (returns cached state, non-blocking)
 ---@return boolean
 function M.is_available()
   if not M.server then
     return false
   end
   return M.server.is_running()
+end
+
+---Check if OpenCode is available with fresh status (async)
+---@param callback function Callback(available: boolean)
+function M.is_available_async(callback)
+  if not M.server then
+    callback(false)
+    return
+  end
+  M.server.refresh_status(callback)
 end
 
 ---Toggle completion on/off
@@ -183,7 +193,7 @@ function M.toggle()
   vim.notify("OpenCode completion " .. status, vim.log.levels.INFO)
 end
 
----Get server status
+---Get server status (returns cached state for immediate display)
 ---@return string
 function M.status()
   if not M.server then
@@ -191,13 +201,56 @@ function M.status()
   end
 
   local running = M.server.is_running()
-  local status = running and "Running" or "Stopped"
+  local status_str = running and "Running" or "Stopped"
 
   if running then
     local url = M.server.get_url()
-    return string.format("OpenCode Server: %s (%s)", status, url)
+    return string.format("OpenCode Server: %s (%s)", status_str, url)
   else
-    return string.format("OpenCode Server: %s", status)
+    return string.format("OpenCode Server: %s", status_str)
+  end
+end
+
+---Get server status with fresh check (async)
+---Shows "Checking..." immediately, then updates with fresh state
+---@param callback? function Optional callback(status_string: string)
+function M.status_async(callback)
+  if not M.server then
+    local msg = "Server module not loaded"
+    if callback then
+      callback(msg)
+    end
+    return
+  end
+
+  -- Show immediate cached status
+  local cached_status = M.status()
+  local url = M.server.get_url()
+
+  -- If we have a URL, show "Checking..." and refresh
+  if url then
+    vim.api.nvim_echo({ { "OpenCode Server: Checking...", "Normal" } }, false, {})
+
+    M.server.refresh_status(function(healthy)
+      local status_str = healthy and "Running" or "Stopped"
+      local final_msg
+      if healthy then
+        final_msg = string.format("OpenCode Server: %s (%s)", status_str, url)
+      else
+        final_msg = string.format("OpenCode Server: %s", status_str)
+      end
+
+      vim.api.nvim_echo({ { final_msg, "Normal" } }, false, {})
+
+      if callback then
+        callback(final_msg)
+      end
+    end)
+  else
+    -- No URL, just return cached status
+    if callback then
+      callback(cached_status)
+    end
   end
 end
 
